@@ -2,6 +2,31 @@
 <html lang="ko">
 <head>
 
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<script>
+/* Cache-buster for GitHub Pages:
+   - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
+   - Also version all local JSON fetches with the same build tag.
+*/
+window.APP_BUILD = "v160";
+window.__ASSET_VER__ = window.APP_BUILD;
+(function(){
+  try{
+    var url = new URL(location.href);
+    var qv = url.searchParams.get("v");
+    // Force a versioned URL once per build (best-effort; avoids stale caches for assets & helps HTML revalidation).
+    if(qv !== window.APP_BUILD){
+      url.searchParams.set("v", window.APP_BUILD);
+      // keep other params; replace without adding history
+      location.replace(url.toString());
+    }
+  }catch(e){}
+})();
+</script>
+
+
 <script>
 /* OFFLINE STABLE: block quote proxy calls that trigger 429/CORS (allorigins/Yahoo/Naver).
    Drive(Google API) calls are NOT blocked. */
@@ -676,9 +701,9 @@ body[data-theme="light"] .itab.active{color:#fff;}
 
   async function loadExternal(){
     var urls=[
-      './krxdb.d.json?v='+Date.now(),
-      './krxdb.min.json?v='+Date.now(), // optional older format
-      './krxdb.json?v='+Date.now()      // legacy
+      './krxdb.d.json?v='+window.__ASSET_VER__,
+      './krxdb.min.json?v='+window.__ASSET_VER__, // optional older format
+      './krxdb.json?v='+window.__ASSET_VER__      // legacy
     ];
     for(var i=0;i<urls.length;i++){
       try{
@@ -835,7 +860,7 @@ body[data-theme="light"] .itab.active{color:#fff;}
 
 // ---------- Network Guard (default OFF to avoid CORS/429) ----------
 window.NET = window.NET || { enabled:false, cooldownUntil:0, minIntervalMs:1500, lastCallAt:0, backoffMs:0 };
-window.netNow = window.netNow || function(){ return Date.now(); };
+window.netNow = window.netNow || function(){ return window.__ASSET_VER__; };
 window.netCanCall = window.netCanCall || function(){
   var now=window.netNow();
   if(!window.NET.enabled) return false;
@@ -925,7 +950,7 @@ var CLIENT_ID = localStorage.getItem('snv5_clientId') || '';
 var DRIVE_FNAME = '주식투자전략노트_data.json';
 
 if (!stocks.length) {
-  var t=Date.now();
+  var t=window.__ASSET_VER__;
   stocks=[
     {id:t+1,name:'삼성전자',code:'005930',mkt:'KOSPI',ticker:'005930.KS',tv:'KRX:005930',price:'',chg:'',trend:'up',sig:'buy',tgt:'78,000',sl:'73,500',cn:'120일 이평선 지지. MACD 골든크로스.',bt:'75,000원 이하 분할매수',st:'78,000 → 80,000 단계 매도',ol:'HBM 수주 확대, 하반기 실적 개선',sy:'분할매수 1차70%/2차30%',risk:'2',bp:'75000',sh:'100',memo:'AI 반도체 수혜주',sec:'반도체',upd:new Date().toISOString()},
     {id:t+2,name:'SK하이닉스',code:'000660',mkt:'KOSPI',ticker:'000660.KS',tv:'KRX:000660',price:'',chg:'',trend:'up',sig:'buy',tgt:'200,000',sl:'181,000',cn:'신고가 후 눌림',bt:'185,000 눌림 매수',st:'200,000 목표',ol:'HBM3E 양산',sy:'모멘텀 단기매매',risk:'3',bp:'187000',sh:'30',memo:'변동성 주의',sec:'반도체',upd:new Date().toISOString()},
@@ -1792,7 +1817,7 @@ function pickStock(it,srcList){
   if(ex){document.getElementById(srcList).className='hac';
     if(srcList==='homeAcList'){document.getElementById('homeSearch').value=''; goToStock(ex.id);}
     else{document.getElementById('msrch').value=''; closeModal();}goToStock(ex.id);return;}
-  var s={id:Date.now(),name:it.name,code:it.code,mkt:it.mkt||'',ticker:ticker,tv:tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};
+  var s={id:window.__ASSET_VER__,name:it.name,code:it.code,mkt:it.mkt||'',ticker:ticker,tv:tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};
   stocks.unshift(s);sv();
   document.getElementById(srcList).className='hac';
   if(srcList==='homeAcList')document.getElementById('homeSearch').value='';
@@ -2153,9 +2178,9 @@ function loadTV(sym, iv) {
     .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
     .then(function(xml){
       var parsed = parseNaverFchartXml(xml);
-      chartCacheSet(cacheKey, {src:'NAVER', ts:Date.now(), candles:parsed.candles, vols:parsed.vols, closes:parsed.closes});
+      chartCacheSet(cacheKey, {src:'NAVER', ts:window.__ASSET_VER__, candles:parsed.candles, vols:parsed.vols, closes:parsed.closes});
       setTvSource('NAVER', 'ok');
-      buildIndicators(parsed.candles, parsed.vols, parsed.closes, tvUrl, el, 'NAVER', Date.now());
+      buildIndicators(parsed.candles, parsed.vols, parsed.closes, tvUrl, el, 'NAVER', window.__ASSET_VER__);
       scheduleAutoRefreshIfNeeded(code);
     })
     .catch(function(e){
@@ -2185,12 +2210,12 @@ function chartCacheGet(key){
   var it = __chartCache.get(key);
   if (!it) return null;
   var ttl = it.ttl || 180000; // 3분
-  if (Date.now() - it.ts > ttl) { __chartCache.delete(key); return null; }
+  if (window.__ASSET_VER__ - it.ts > ttl) { __chartCache.delete(key); return null; }
   return it;
 }
 function chartCacheSet(key, obj){
   obj = obj || {};
-  obj.ts = obj.ts || Date.now();
+  obj.ts = obj.ts || window.__ASSET_VER__;
   obj.ttl = obj.ttl || 180000;
   __chartCache.set(key, obj);
 }
@@ -2393,17 +2418,17 @@ function tryYahooFallback(code, iv, tvUrl, el, cacheKey, okCb, errCb){
   var curS = (typeof gbi==='function' && cid) ? gbi(cid) : null;
   var first = code + getKRxSuffix(curS); // .KS or .KQ
   fetchYahooCandles(first, iv).then(function(pack){
-    chartCacheSet(cacheKey, {src:'YAHOO', ts:Date.now(), candles:pack.candles, vols:pack.vols, closes:pack.closes});
+    chartCacheSet(cacheKey, {src:'YAHOO', ts:window.__ASSET_VER__, candles:pack.candles, vols:pack.vols, closes:pack.closes});
     setTvSource('YAHOO', first);
-    buildIndicators(pack.candles, pack.vols, pack.closes, tvUrl, el, 'YAHOO', Date.now());
+    buildIndicators(pack.candles, pack.vols, pack.closes, tvUrl, el, 'YAHOO', window.__ASSET_VER__);
     if (okCb) okCb(true);
   }).catch(function(e){
     // 재시도 KS<->KQ
     var alt = first.endsWith('.KS') ? (code+'.KQ') : (code+'.KS');
     fetchYahooCandles(alt, iv).then(function(pack){
-      chartCacheSet(cacheKey, {src:'YAHOO', ts:Date.now(), candles:pack.candles, vols:pack.vols, closes:pack.closes});
+      chartCacheSet(cacheKey, {src:'YAHOO', ts:window.__ASSET_VER__, candles:pack.candles, vols:pack.vols, closes:pack.closes});
       setTvSource('YAHOO', alt);
-      buildIndicators(pack.candles, pack.vols, pack.closes, tvUrl, el, 'YAHOO', Date.now());
+      buildIndicators(pack.candles, pack.vols, pack.closes, tvUrl, el, 'YAHOO', window.__ASSET_VER__);
       if (okCb) okCb(true);
     }).catch(function(e2){
       if (errCb) errCb(e2);
@@ -2514,7 +2539,7 @@ function loadMinuteCandles(code){
   var cfgCore = getChartCfgCore();
   var cacheKey = 'KRMIN|' + code + '|' + JSON.stringify(cfgCore);
   var cached = chartCacheGet(cacheKey);
-  if (cached && (Date.now() - cached.ts < 60000)) {
+  if (cached && (window.__ASSET_VER__ - cached.ts < 60000)) {
     buildIndicators(cached.candles, cached.vols, cached.closes, 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent('KRX:'+code), document.getElementById('tvc'), cached.src, cached.ts, true);
     scheduleAutoRefreshIfNeeded(code);
     return;
@@ -2550,8 +2575,8 @@ function loadMinuteCandles(code){
       if (candles.length<20) throw new Error('minute 유효 캔들 부족');
       candles.sort(function(a,b){return a.time-b.time;});
       vols.sort(function(a,b){return a.time-b.time;});
-      chartCacheSet(cacheKey, {src:'NAVER', ts:Date.now(), ttl:60000, candles:candles, vols:vols, closes:closes});
-      buildIndicators(candles, vols, closes, 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent('KRX:'+code), document.getElementById('tvc'), 'NAVER', Date.now(), true);
+      chartCacheSet(cacheKey, {src:'NAVER', ts:window.__ASSET_VER__, ttl:60000, candles:candles, vols:vols, closes:closes});
+      buildIndicators(candles, vols, closes, 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent('KRX:'+code), document.getElementById('tvc'), 'NAVER', window.__ASSET_VER__, true);
       scheduleAutoRefreshIfNeeded(code);
     })
     .catch(function(e){
@@ -2645,7 +2670,7 @@ function ensureCommentButtons(){
     var t=getTA(); if(!t) return;
     var key = getNoteLogKey(s);
     var arr = loadNoteLog(key);
-    arr.unshift({ts:Date.now(), text:t.value||''});
+    arr.unshift({ts:window.__ASSET_VER__, text:t.value||''});
     if (arr.length>60) arr=arr.slice(0,60);
     saveNoteLog(key, arr);
     toast('로그 저장 완료 ('+arr.length+'개)');
@@ -3059,7 +3084,7 @@ async function renderRel(s){
     });
   });
 }
-function addRel(r){if(typeof r==='string')r=JSON.parse(r);var ex=stocks.find(function(s){return s.code===r.code;});if(ex){alert(r.name+' 은 이미 추가되어 있습니다.');goToStock(ex.id);return;}var s={id:Date.now(),name:r.name,code:r.code,mkt:r.mkt||'',ticker:r.ticker,tv:r.tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};stocks.unshift(s);sv();cid=s.id;renderList();renderDetail();rfPrice(s.id);}
+function addRel(r){if(typeof r==='string')r=JSON.parse(r);var ex=stocks.find(function(s){return s.code===r.code;});if(ex){alert(r.name+' 은 이미 추가되어 있습니다.');goToStock(ex.id);return;}var s={id:window.__ASSET_VER__,name:r.name,code:r.code,mkt:r.mkt||'',ticker:r.ticker,tv:r.tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};stocks.unshift(s);sv();cid=s.id;renderList();renderDetail();rfPrice(s.id);}
 
 // ══════════════════════════════════════════
 // NOTE LIST & DETAIL
@@ -3119,7 +3144,7 @@ function uf(f){var s=gbi(cid);if(!s)return;var el=document.getElementById(fmap[f
 function setRisk(v,el){var s=gbi(cid);if(!s)return;s.risk=v;s.upd=new Date().toISOString();document.querySelectorAll('.rlev').forEach(function(e){e.classList.remove('sel');});el.classList.add('sel');sv();renderList();showSind('✓ 저장됨','saved');}
 function showSind(txt,cls){var ind=document.getElementById('sind');ind.textContent=txt;ind.className='sind show '+(cls||'');if(cls==='saved'||cls==='drive')setTimeout(function(){ind.className='sind';},2000);}
 function delS(){if(!confirm('삭제할까요?'))return;stocks=stocks.filter(function(s){return s.id!==cid;});sv();cid=null;document.getElementById('dv').className='dv';document.getElementById('empty').style.display='';clearInterval(prt);renderList();}
-function dupS(){var s=gbi(cid);if(!s)return;var c=JSON.parse(JSON.stringify(s));c.id=Date.now();c.name=s.name+' (복사)';c.upd=new Date().toISOString();stocks.unshift(c);sv();cid=c.id;renderList();renderDetail();}
+function dupS(){var s=gbi(cid);if(!s)return;var c=JSON.parse(JSON.stringify(s));c.id=window.__ASSET_VER__;c.name=s.name+' (복사)';c.upd=new Date().toISOString();stocks.unshift(c);sv();cid=c.id;renderList();renderDetail();}
 function sf(f,el){cf=f;document.querySelectorAll('.ftab').forEach(function(e){e.classList.remove('active');});el.classList.add('active');renderList();}
 
 // ══════════════════════════════════════════
@@ -3472,7 +3497,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
     // Add to list using schema compatible with existing app
     list.unshift({
-      id: String(Date.now()),
+      id: String(window.__ASSET_VER__),
       name: name || v,
       code: code || v,
       mkt: mkt,
@@ -3928,7 +3953,7 @@ function autoPrefillCommentIfEmpty(s){
       var k='sn_device_id';
       var v=localStorage.getItem(k);
       if(!v){
-        v='dev_'+Math.random().toString(16).slice(2)+Date.now().toString(16);
+        v='dev_'+Math.random().toString(16).slice(2)+window.__ASSET_VER__.toString(16);
         localStorage.setItem(k,v);
       }
       return v;
