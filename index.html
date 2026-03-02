@@ -1642,52 +1642,82 @@ function esc(s){ return escapeHtml(s); }
 // ──────────────────────────────────────────
 
 // -------------------- KRX DB MERGE (offline) --------------------
+// NOTE: In a single-file app, the <script id="krxdb"> blob may appear AFTER this code.
+// So we retry until both localDB and #krxdb are available.
 (function(){
-  try{
-    var el=document.getElementById('krxdb');
-    if(!el||!el.textContent) return;
-    if(window.__KRX_MERGED__) return;
-    var arr=JSON.parse(el.textContent);
-    if(!Array.isArray(arr)||!arr.length) return;
-    // Map to app's localDB schema
-    var mapped=arr.map(function(x){
-      var code=String(x.code||'').replace(/\D/g,'').padStart(6,'0');
-      return {
-        code: code,
-        name: String(x.name||'').trim(),
-        sec: String(x.sec||'').trim(),
-        mkt: String(x.mkt||'KRX').trim(),
-        tv: String(x.tv || ('KRX:'+code)).trim(),
-        ticker: String(x.ticker||'').trim(),
-        type: String(x.type||'').trim(),
-        overseas: false
-      };
-    }).filter(function(x){ return x.code && x.name; });
+  function mergeOnce(){
+    try{
+      if(window.__KRX_MERGED__) return true;
+      if(typeof localDB==='undefined' || !Array.isArray(localDB)) return false;
+      var el = document.getElementById('krxdb');
+      if(!el || !el.textContent) return false;
 
-    // De-dup by tv, then by code+name
-    var seenTV={};
-    var seenCN={};
-    for(var i=0;i<localDB.length;i++){
-      var it=localDB[i]||{};
-      var tv=String(it.tv||'').toUpperCase();
-      if(tv) seenTV[tv]=1;
-      var cn=String(it.code||'')+'|'+String(it.name||'');
-      seenCN[cn]=1;
+      var arr = JSON.parse(el.textContent);
+      if(!Array.isArray(arr) || !arr.length) return false;
+
+      var mapped = arr.map(function(x){
+        var code = String(x.code||'').replace(/\D/g,'').padStart(6,'0');
+        return {
+          code: code,
+          name: String(x.name||'').trim(),
+          sec: String(x.sec||'').trim(),
+          mkt: String(x.mkt||'KRX').trim(),
+          tv:  String(x.tv || ('KRX:'+code)).trim(),
+          ticker: String(x.ticker||'').trim(),
+          type: String(x.type||'').trim(),
+          overseas: false
+        };
+      }).filter(function(x){ return x.code && x.name; });
+
+      // De-dup by tv, then by code+name
+      var seenTV = {};
+      var seenCN = {};
+      for(var i=0;i<localDB.length;i++){
+        var it = localDB[i]||{};
+        var tv = String(it.tv||'').toUpperCase();
+        if(tv) seenTV[tv]=1;
+        var cn = String(it.code||'')+'|'+String(it.name||'');
+        seenCN[cn]=1;
+      }
+      var added = 0;
+      for(var j=0;j<mapped.length;j++){
+        var it2 = mapped[j];
+        var tv2 = String(it2.tv||'').toUpperCase();
+        var cn2 = String(it2.code||'')+'|'+String(it2.name||'');
+        if((tv2 && seenTV[tv2]) || seenCN[cn2]) continue;
+        localDB.push(it2);
+        added++;
+        if(tv2) seenTV[tv2]=1;
+        seenCN[cn2]=1;
+      }
+
+      window.__KRX_MERGED__ = true;
+      if(typeof rebuildDBIndex==='function'){ try{ rebuildDBIndex(); }catch(_e){} }
+      console.log('[KRX] merged into localDB. added=', added, ' total=', localDB.length);
+      return true;
+    }catch(e){
+      console.warn('[KRX] merge failed', e);
+      return false;
     }
-    for(var j=0;j<mapped.length;j++){
-      var it2=mapped[j];
-      var tv2=String(it2.tv||'').toUpperCase();
-      var cn2=String(it2.code||'')+'|'+String(it2.name||'');
-      if((tv2 && seenTV[tv2]) || seenCN[cn2]) continue;
-      localDB.push(it2);
-      if(tv2) seenTV[tv2]=1;
-      seenCN[cn2]=1;
-    }
-    window.__KRX_MERGED__=true;
-    console.log('[KRX] merged into localDB:', mapped.length);
-  }catch(e){
-    console.warn('[KRX] merge failed', e);
   }
+
+  function scheduleMerge(){
+    var tries = 0;
+    var maxTries = 60; // ~6s
+    var t = setInterval(function(){
+      tries++;
+      if(mergeOnce() || tries>=maxTries) clearInterval(t);
+    }, 100);
+
+    // Also try once after DOM is ready
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', function(){ mergeOnce(); }, {once:true});
+    }else{
+      setTimeout(mergeOnce, 0);
+    }
+  }
+
+  scheduleMerge();
 })();
 
 var dbByCode = Object.create(null);
