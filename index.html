@@ -10,7 +10,7 @@
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v165";
+window.APP_BUILD = "v166";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -653,6 +653,14 @@ body[data-theme="light"] .tvbtn.active{background:rgba(37,99,235,.12); border-co
 body[data-theme="light"] .tvsel{background:rgba(15,23,42,.04); color:var(--text); border:1px solid rgba(15,23,42,.10);}
 body[data-theme="light"] .tvmono{color:var(--text);}
 
+
+/* v166 mobile UX tweaks (safe, no logic changes) */
+@media (max-width: 820px){
+  .btn, button, .krTab, .chip{ min-height: 40px; }
+  #tvc .extlk{ padding: 8px 10px; }
+  .tvframe iframe{ min-height: 52vh; }
+}
+body{ padding-bottom: env(safe-area-inset-bottom); }
 </style>
 
 <script>
@@ -2186,6 +2194,7 @@ function loadTV(sym, iv) {
   // 외부 링크
   var tvSym = isKR ? ('KRX:' + code)
                    : (sym.indexOf(':') > -1 ? sym : 'NASDAQ:' + sym.toUpperCase());
+  __lastTvSym = tvSym;
   var tvUrl    = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(tvSym);
 
   var naverUrl = isKR ? ('https://finance.naver.com/item/main.nhn?code=' + code) : '';
@@ -3788,31 +3797,37 @@ document.addEventListener('DOMContentLoaded', function(){
       var nt = norm(t);
       var nn = norm(n);
 
-      var score = -1;
-      if(nt && nt.indexOf(nq)===0) score = 0;              // ticker prefix (best)
-      else if(nn && nn.indexOf(nq)===0) score = 1;         // name prefix
-      else continue;                                       // strict: prefix only
+      // tier (lower is better): keep prefix-first ordering
+      // 0 exact ticker, 1 ticker prefix, 2 name prefix, 3 ticker contains, 4 name contains
+      var tier = 99;
+      if(nt && nt===nq) tier = 0;
+      else if(nt && nt.indexOf(nq)===0) tier = 1;
+      else if(nn && nn.indexOf(nq)===0) tier = 2;
+      else if(nt && nt.indexOf(nq)>0) tier = 3;
+      else if(nn && nn.indexOf(nq)>0) tier = 4;
+      else continue;
 
-      // Slight boost for exact prefix (shorter distance)
-      var extra = (score===0 ? nt.length : nn.length);
-      scored.push({x:x, score:score, extra:extra});
+      scored.push({x:x, tier:tier, len:(tier<=1?nt.length:nn.length)});
     }
 
     scored.sort(function(a,b){
-      if(a.score!==b.score) return a.score-b.score;
-      if(a.extra!==b.extra) return a.extra-b.extra;
-      // stable fallback: ticker
+      if(a.tier!==b.tier) return a.tier-b.tier;
+      if(a.len!==b.len) return a.len-b.len;
       var at = String((a.x||{}).t||"");
       var bt = String((b.x||{}).t||"");
       return at.localeCompare(bt);
     });
 
-    return scored.slice(0, 30).map(function(o){
+    // Prefer strict prefix tiers (0-2). If too few, allow contains tiers (3-4).
+    var primary = scored.filter(function(o){ return o.tier<=2; });
+    var finalList = primary.length>=10 ? primary : scored;
+
+    return finalList.slice(0, 30).map(function(o){
       var x=o.x||{};
       var t=String(x.t||"").trim();
       var ex=String(x.ex||"NASDAQ").trim().toUpperCase();
       var tv=buildTVSymbolFromUS(t, ex);
-      return { id:"US_"+t, name:x.n+" ("+t+")", code:t, ticker:t, tv:tv, mkt:"US", sec:"US" };
+      return { id:"US_"+t, name:(x.n||t)+" ("+t+")", code:t, ticker:t, tv:tv, mkt:"US", sec:"US" };
     });
   }
 
