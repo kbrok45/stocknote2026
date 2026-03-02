@@ -57,6 +57,128 @@
 </script>
 
 <meta charset="UTF-8">
+<script>
+/* KRX DB external loader for GitHub Pages stability.
+   - Primary: fetch ./krxdb.json (same folder as index.html)
+   - Fallback: parse inline JSON in #krxdb_inline
+*/
+(function(){
+  function safeJSONParse(txt){
+    try{ return JSON.parse(txt); }catch(e){ return null; }
+  }
+  function mapAndMerge(arr){
+    if(!Array.isArray(arr) || !arr.length) return {ok:false, reason:'empty'};
+    if(typeof window.localDB==='undefined' || !Array.isArray(window.localDB)) window.localDB=[];
+    var seenTV = Object.create(null);
+    var seenCN = Object.create(null);
+    for(var i=0;i<window.localDB.length;i++){
+      var it = window.localDB[i]||{};
+      var tv = String(it.tv||'').toUpperCase();
+      if(tv) seenTV[tv]=1;
+      var cn = String(it.code||'')+'|'+String(it.name||'');
+      seenCN[cn]=1;
+    }
+    var added=0;
+    for(var j=0;j<arr.length;j++){
+      var x = arr[j]||{};
+      var code = String(x.code||'').replace(/\D/g,'').padStart(6,'0');
+      var name = String(x.name||'').trim();
+      if(!code || !name) continue;
+      var item = {
+        code: code,
+        name: name,
+        sec: String(x.sec||'').trim(),
+        mkt: String(x.mkt||'KRX').trim(),
+        tv:  String(x.tv || ('KRX:'+code)).trim(),
+        ticker: String(x.ticker||'').trim(),
+        type: String(x.type||'').trim(),
+        overseas: false
+      };
+      var tv2 = String(item.tv||'').toUpperCase();
+      var cn2 = item.code+'|'+item.name;
+      if((tv2 && seenTV[tv2]) || seenCN[cn2]) continue;
+      window.localDB.push(item);
+      added++;
+      if(tv2) seenTV[tv2]=1;
+      seenCN[cn2]=1;
+    }
+    window.__KRX_DB_LOADED__ = true;
+    window.__KRX_DB_COUNT__ = window.localDB.length;
+    if(typeof window.rebuildDBIndex==='function'){ try{ window.rebuildDBIndex(); }catch(_e){} }
+    console.log('[KRX] loaded/merged. added=', added, ' total=', window.localDB.length);
+    return {ok:true, added:added, total:window.localDB.length};
+  }
+
+  function showBanner(msg){
+    try{
+      var b=document.getElementById('krxDiagBanner');
+      if(!b){
+        b=document.createElement('div');
+        b.id='krxDiagBanner';
+        b.style.cssText='position:fixed;left:12px;bottom:12px;right:12px;z-index:99999;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.4;box-shadow:0 8px 30px rgba(0,0,0,.18);';
+        var dark = document.body && document.body.classList && document.body.classList.contains('dark');
+        b.style.background = dark ? 'rgba(20,24,34,.96)' : 'rgba(255,255,255,.96)';
+        b.style.border = '1px solid ' + (dark ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.12)');
+        b.style.color = dark ? '#e9eefc' : '#1b2433';
+        document.body.appendChild(b);
+      }
+      b.innerHTML = msg;
+    }catch(e){}
+  }
+
+  async function loadExternal(){
+    var url = './krxdb.json?v=' + Date.now();
+    var res = await fetch(url, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    var arr = await res.json();
+    return mapAndMerge(arr);
+  }
+
+  function loadInlineFallback(){
+    var el = document.getElementById('krxdb_inline');
+    if(!el || !el.textContent) return {ok:false, reason:'no_inline'};
+    var arr = safeJSONParse(el.textContent.trim());
+    if(!arr) return {ok:false, reason:'inline_parse_fail'};
+    return mapAndMerge(arr);
+  }
+
+  function boot(){
+    // wait for localDB + DOM
+    var tries=0, max=120; // up to ~12s
+    var t=setInterval(async function(){
+      tries++;
+      var ready = (typeof window.localDB!=='undefined'); // localDB declared by main script
+      var domReady = (document.readyState==='interactive' || document.readyState==='complete');
+      if(!ready || !domReady){
+        if(tries>=max){ clearInterval(t); }
+        return;
+      }
+      clearInterval(t);
+      try{
+        var r = await loadExternal();
+        if(!r.ok) throw new Error(r.reason||'unknown');
+      }catch(e){
+        // fallback
+        var r2 = loadInlineFallback();
+        if(!r2.ok){
+          showBanner('<b>국내 종목 DB 로드 실패</b> — GitHub Pages에서 자동완성이 안 되면, 저장소 루트에 <code>.nojekyll</code>(빈 파일)과 <code>krxdb.json</code> 업로드를 확인하세요. <button id="btnKrxRetry" style="margin-left:8px;padding:4px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.15);background:transparent;cursor:pointer;">재시도</button>');
+          setTimeout(function(){
+            var btn=document.getElementById('btnKrxRetry');
+            if(btn) btn.onclick=function(){ location.reload(); };
+          },0);
+        }
+      }
+    }, 100);
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', boot);
+  }else{
+    boot();
+  }
+})();
+</script>
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -442,9 +564,6 @@ body[data-theme="light"] .cnote textarea{background:#ffffff;}
 body[data-theme="light"] .itab{color:var(--muted);}
 body[data-theme="light"] .itab.active{color:#fff;}
 
-
-.logo-build{margin-left:8px;padding:2px 8px;border-radius:999px;font-size:12px;opacity:.8;border:1px solid rgba(0,0,0,.15)}
-body.dark .logo-build{border-color:rgba(255,255,255,.18)}
 </style>
 </head>
 <body>
@@ -454,7 +573,6 @@ body.dark .logo-build{border-color:rgba(255,255,255,.18)}
     <div class="logo-badge"><div class="logo-prof">PROF.</div><div class="logo-kim">KIM</div></div>
     <div class="logo-title">STOCK NOTE</div>
     <div class="logo-year">2026</div>
-    <div class="logo-build" id="buildTag">build v152</div>
   </div>
   <div class="hnav">
     <button class="hnb active" id="navHome" onclick="showPage('home')">🏠 홈</button>
@@ -1646,7 +1764,7 @@ function esc(s){ return escapeHtml(s); }
 // ──────────────────────────────────────────
 
 // -------------------- KRX DB MERGE (offline) --------------------
-// NOTE: In a single-file app, the <script id="krxdb"> blob may appear AFTER this code.
+// NOTE: In a single-file app, the <script id="krxdb_inline"> blob may appear AFTER this code.
 // So we retry until both localDB and #krxdb are available.
 (function(){
   function mergeOnce(){
@@ -1710,26 +1828,7 @@ function esc(s){ return escapeHtml(s); }
     var maxTries = 60; // ~6s
     var t = setInterval(function(){
       tries++;
-      if(mergeOnce() || tries>=maxTries){ clearInterval(t);
-      if(tries>=maxTries && !window.__KRX_MERGED__){
-        console.warn('[KRX] merge did not complete after retries. Possible GitHub Pages Jekyll/Liquid interference. Add .nojekyll at repo root.');
-        try{
-          var b=document.getElementById('krxDiagBanner');
-          if(!b){
-            b=document.createElement('div');
-            b.id='krxDiagBanner';
-            b.style.cssText='position:fixed;left:12px;bottom:12px;right:12px;z-index:99999;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.4;box-shadow:0 8px 30px rgba(0,0,0,.18);';
-            b.style.background = (document.body.classList.contains('dark')?'rgba(20,24,34,.96)':'rgba(255,255,255,.96)');
-            b.style.border = '1px solid ' + (document.body.classList.contains('dark')?'rgba(255,255,255,.18)':'rgba(0,0,0,.12)');
-            b.style.color = (document.body.classList.contains('dark')?'#e9eefc':'#1b2433');
-            b.innerHTML = '<b>국내 종목 DB 로드 실패</b> — GitHub Pages에서 자동완성이 안 되면, 저장소 루트에 <code>.nojekyll</code> (빈 파일) 을 추가한 뒤 다시 배포하세요. '+
-                          '<button id="btnForceRebuild" style="margin-left:8px;padding:4px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.15);background:transparent;cursor:pointer;">지금 재시도</button>';
-            document.body.appendChild(b);
-            b.querySelector('#btnForceRebuild').onclick=function(){ try{ mergeOnce(); if(window.__KRX_MERGED__) b.remove(); }catch(e){} };
-          }
-        }catch(e){}
-      }
- }
+      if(mergeOnce() || tries>=maxTries) clearInterval(t);
     }, 100);
 
     // Also try once after DOM is ready
