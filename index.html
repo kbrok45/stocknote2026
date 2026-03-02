@@ -1617,52 +1617,12 @@ function handleHomeSearchKey(e){ return handleSearchKeyFor(e,'homeSearch','homeA
 // -------------------- Yahoo dynamic search (overseas) --------------------
 var __yahooCache__ = {};
 async function yahooSearch(q){
-  // Prefer local usDB for stable GitHub Pages usage (no CORS/rate-limit).
-  q=String(q||'').trim();
-  if(!q) return [];
-  try{
-    if(window.__US_DB_LOADED__ && Array.isArray(window.usDB) && window.usDB.length){
-      var ql=q.toLowerCase();
-      // match by ticker prefix OR name contains
-      var hits = window.usDB.filter(function(x){
-        if(!x) return false;
-        var sym=String(x.code||'').toLowerCase();
-        var nm=String(x.name||'').toLowerCase();
-        return (sym.indexOf(ql)===0) || (nm.indexOf(ql)>-1);
-      });
-      // scoring: ticker-prefix > name-contains, shorter ticker first
-      hits.sort(function(a,b){
-        function score(x){
-          var sym=String(x.code||''); var nm=String(x.name||'');
-          var s0 = (sym.toLowerCase().indexOf(ql)===0) ? 100 : 0;
-          var s1 = (nm.toLowerCase().indexOf(ql)>-1) ? 10 : 0;
-          var s2 = -Math.min(sym.length, 20);
-          // gentle pin for very common tickers
-          var pin = (/^(tsla|aapl|nvda|msft|amzn|googl|meta|nflx)$/i.test(sym)) ? 5 : 0;
-          return s0+s1+s2+pin;
-        }
-        return score(b)-score(a);
-      });
-      return hits.slice(0,10).map(function(x){
-        // ensure shape
-        return {
-          code: x.code,
-          name: x.name,
-          sec: x.sec||'US',
-          mkt: x.mkt||'US',
-          tv: x.tv||('NASDAQ:'+x.code),
-          ticker: x.code,
-          overseas: true,
-          _src: x._src||'usdb'
-        };
-      });
-    }
-  }catch(e){}
-
-  // Fallback to Yahoo (may be blocked by CORS in some environments)
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return [];
   if(typeof window.netMarkCall==='function') window.netMarkCall();
 
+  q=String(q||'').trim();
+  if(!q) return [];
+  if(__yahooCache__[q]) return __yahooCache__[q];
   var url='https://query2.finance.yahoo.com/v1/finance/search?q='+encodeURIComponent(q)+'&quotesCount=10&newsCount=0';
   try{
     var r=await fetch(url,{mode:'cors',credentials:'omit',cache:'no-store'});
@@ -1704,134 +1664,53 @@ async function yahooSearch(q){
 }
 
 
-async 
-// ----- Autocomplete pin rules (KR) -----
-// "삼성" 같이 결과가 많은 경우 핵심 종목을 상단 고정해 스크롤 부담을 줄인다.
-var PIN_RULES = [
-  {
-    key: '삼성',
-    // 상단 고정 우선순위(앞이 더 위)
-    names: ['삼성전자','삼성SDI','삼성물산','삼성생명','삼성화재','삼성중공업','삼성바이오로직스','삼성전기','삼성SDS','삼성증권','삼성엔지니어링','삼성카드','삼성E&A','삼성에스디에스','삼성바이오'],
-  }
-];
-
-function applyPinnedOrder(qTrim, items){
-  try{
-    if(!qTrim || !items || !items.length) return items;
-    var q = String(qTrim).trim();
-    if(!/[ㄱ-ㆎ가-힣]/.test(q)) return items;
-    // find first matching rule where query starts with key
-    var rule=null;
-    for(var i=0;i<PIN_RULES.length;i++){
-      if(q.indexOf(PIN_RULES[i].key)===0){ rule=PIN_RULES[i]; break; }
-    }
-    if(!rule) return items;
-
-    var pinSet = {};
-    rule.names.forEach(function(n,idx){ pinSet[String(n)] = idx; });
-
-    var pinned=[], rest=[];
-    items.forEach(function(it){
-      var nm = String(it && it.name || '');
-      if(pinSet.hasOwnProperty(nm)){
-        it.__pinned = true;
-        it.__pinRank = pinSet[nm];
-        pinned.push(it);
-      }else{
-        it.__pinned = false;
-        rest.push(it);
-      }
-    });
-    pinned.sort(function(a,b){ return (a.__pinRank||0) - (b.__pinRank||0); });
-    // Keep pinned on top, preserve rest order
-    return pinned.concat(rest);
-  }catch(e){ return items; }
-}
-
 async function runSearch(q,lid){
   var ac=document.getElementById(lid);if(!ac)return;
   var qRaw=(q||'');
-  var qTrim=String(qRaw).trim();
-  var ql=qTrim.toLowerCase();
+  var ql=qRaw.toLowerCase().trim();
   if(!ql){ac.className='hac';return;}
-
-  // Hangul query? (stricter: match NAME only, do not use sector/market fuzzy)
-  var isHangul = /[ㄱ-ㆎ가-힣]/.test(qTrim);
-  var isDigits = /^\d+$/.test(qTrim);
-  var qExact = ql.replace(/\s+/g,''); // remove spaces
 
   // 1) Local (offline) search: localDB (KRX merged + any built-ins) — scored ranking
   var results=[];
   try{
+    var qExact = ql.replace(/\s+/g,'');
     results = (localDB||[]).map(function(x){
       if(!x) return null;
-      var nmRaw=String(x.name||'');
-      var nm=nmRaw.toLowerCase();
+      var nm=String(x.name||'').toLowerCase();
       var cd=String(x.code||'').toLowerCase();
       var tk=String(x.ticker||'').toLowerCase();
       var sec=String(x.sec||'').toLowerCase();
       var mkt=String(x.mkt||'').toLowerCase();
-
       var score = 0;
 
-      // ---- STRICT MATCH RULES ----
-      // Hangul input: ONLY match Korean name (contains/prefix/exact)
-      // Numeric input: match code strongly
-      // Latin/alnum input: match ticker/code/name
-      if(isHangul){
-        if(!nm) return null;
-        if(nm === ql) score += 260;
-        if(nm.indexOf(ql)===0) score += 220;
-        if(nm.indexOf(ql)>-1) score += 140;
-        // If still no match -> drop
-        if(score<=0) return null;
-      }else if(isDigits){
-        if(cd === qExact) score += 300;
-        if(cd.indexOf(qExact)===0) score += 220;
-        if(cd.indexOf(qExact)>-1) score += 140;
-        if(score<=0) return null;
-      }else{
-        // alnum
-        if(tk && tk===qExact) score += 280;
-        if(cd && cd===qExact) score += 260;
-        if(nm && nm===ql) score += 240;
+      // exact matches
+      if(cd && cd===qExact) score += 120;
+      if(tk && tk===qExact) score += 115;
+      if(nm && nm===ql)     score += 110;
 
-        if(tk && tk.indexOf(qExact)===0) score += 200;
-        if(cd && cd.indexOf(qExact)===0) score += 180;
-        if(nm && nm.indexOf(ql)===0) score += 160;
+      // prefix / contains
+      if(cd && cd.indexOf(qExact)===0) score += 95;
+      if(tk && tk.indexOf(qExact)===0) score += 90;
+      if(nm && nm.indexOf(ql)===0)     score += 85;
 
-        if(tk && tk.indexOf(qExact)>-1) score += 120;
-        if(cd && cd.indexOf(qExact)>-1) score += 110;
-        if(nm && nm.indexOf(ql)>-1) score += 95;
+      if(nm && nm.indexOf(ql)>-1)      score += 55;
+      if(cd && cd.indexOf(qExact)>-1)  score += 50;
+      if(tk && tk.indexOf(qExact)>-1)  score += 45;
+      if(sec && sec.indexOf(ql)>-1)    score += 20;
+      if(mkt && mkt.indexOf(ql)>-1)    score += 15;
 
-        // light extra signals (ONLY for non-Hangul)
-        if(sec && sec.indexOf(ql)>-1) score += 18;
-        if(mkt && mkt.indexOf(ql)>-1) score += 10;
+      // small boost for KR when Hangul query
+      if(/[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
 
-        if(score<=0) return null;
-      }
-
-      // Small boost: KRX first when Hangul
-      if(isHangul && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 12;
-
-      return {x:x,score:score};
-    }).filter(Boolean)
-      .sort(function(a,b){
-        if(b.score!==a.score) return b.score-a.score;
-        // tie-break: prefer shorter name, then 가나다/ABC
-        var al=String(a.x.name||'').length;
-        var bl=String(b.x.name||'').length;
-        if(al!==bl) return al-bl;
-        return String(a.x.name||'').localeCompare(String(b.x.name||''), 'ko');
-      })
-      .slice(0,30)
-      .map(function(o){ return o.x; });
+      return score>0 ? {x:x,score:score} : null;
+    }).filter(Boolean).sort(function(a,b){
+      if(b.score!==a.score) return b.score-a.score;
+      // tie-breaker: shorter name/code first
+      return String(a.x.name||'').length - String(b.x.name||'').length;
+    }).slice(0,12).map(function(o){ return o.x; });
   }catch(e){ results=[]; }
-  // Apply pinned ordering for high-frequency Korean queries (e.g., 삼성*)
-  results = applyPinnedOrder(qTrim, results);
 
-
-// Helper: render items
+  // Helper: render items
   function renderItems(items, meta){
     var head='';
     if(meta && meta.title){
@@ -1839,13 +1718,12 @@ async function runSearch(q,lid){
     }
     ac.innerHTML = head + items.map(function(it){
       var enc=JSON.stringify(it).replace(/"/g,'&quot;');
-      var pin = it.__pinned ? '<span class="acpin" title="상단 고정" style="margin-right:6px;color:var(--a3);font-weight:900">📌</span>' : '';
       var badge=it.overseas
         ?'<span class="acmkt" style="background:rgba(255,107,53,.15);color:var(--a2)">'+(it.mkt||'해외')+'</span>'
         :'<span class="acmkt">'+(it.mkt||'KRX')+'</span>';
       var sub = (it.code?it.code:'') + (it.sec?(' · '+it.sec):'');
       return '<div class="acitem" data-code="'+esc(it.code||'')+'" data-tv="'+esc(it.tv||'')+'" data-overseas="'+(it.overseas?1:0)+'" onclick="pickStock('+enc+',\''+lid+'\')">'
-        +'<div><div class="acname">'+pin+esc(it.name||it.code||'')+'</div><div class="accode">'+esc(sub)+'</div></div>'
+        +'<div><div class="acname">'+esc(it.name||it.code||'')+'</div><div class="accode">'+esc(sub)+'</div></div>'
         +badge+'</div>';
     }).join('');
   }
@@ -1959,82 +1837,52 @@ function esc(s){ return escapeHtml(s); }
 // ──────────────────────────────────────────
 
 // -------------------- KRX DB MERGE (offline) --------------------
-// NOTE: In a single-file app, the <script id="krxdb_inline"> blob may appear AFTER this code.
-// So we retry until both localDB and #krxdb are available.
 (function(){
-  function mergeOnce(){
-    try{
-      if(window.__KRX_MERGED__) return true;
-      if(typeof localDB==='undefined' || !Array.isArray(localDB)) return false;
-      var el = document.getElementById('krxdb');
-      if(!el || !el.textContent) return false;
+  try{
+    var el=document.getElementById('krxdb');
+    if(!el||!el.textContent) return;
+    if(window.__KRX_MERGED__) return;
+    var arr=JSON.parse(el.textContent);
+    if(!Array.isArray(arr)||!arr.length) return;
+    // Map to app's localDB schema
+    var mapped=arr.map(function(x){
+      var code=String(x.code||'').replace(/\D/g,'').padStart(6,'0');
+      return {
+        code: code,
+        name: String(x.name||'').trim(),
+        sec: String(x.sec||'').trim(),
+        mkt: String(x.mkt||'KRX').trim(),
+        tv: String(x.tv || ('KRX:'+code)).trim(),
+        ticker: String(x.ticker||'').trim(),
+        type: String(x.type||'').trim(),
+        overseas: false
+      };
+    }).filter(function(x){ return x.code && x.name; });
 
-      var arr = JSON.parse(el.textContent);
-      if(!Array.isArray(arr) || !arr.length) return false;
-
-      var mapped = arr.map(function(x){
-        var code = String(x.code||'').replace(/\D/g,'').padStart(6,'0');
-        return {
-          code: code,
-          name: String(x.name||'').trim(),
-          sec: String(x.sec||'').trim(),
-          mkt: String(x.mkt||'KRX').trim(),
-          tv:  String(x.tv || ('KRX:'+code)).trim(),
-          ticker: String(x.ticker||'').trim(),
-          type: String(x.type||'').trim(),
-          overseas: false
-        };
-      }).filter(function(x){ return x.code && x.name; });
-
-      // De-dup by tv, then by code+name
-      var seenTV = {};
-      var seenCN = {};
-      for(var i=0;i<localDB.length;i++){
-        var it = localDB[i]||{};
-        var tv = String(it.tv||'').toUpperCase();
-        if(tv) seenTV[tv]=1;
-        var cn = String(it.code||'')+'|'+String(it.name||'');
-        seenCN[cn]=1;
-      }
-      var added = 0;
-      for(var j=0;j<mapped.length;j++){
-        var it2 = mapped[j];
-        var tv2 = String(it2.tv||'').toUpperCase();
-        var cn2 = String(it2.code||'')+'|'+String(it2.name||'');
-        if((tv2 && seenTV[tv2]) || seenCN[cn2]) continue;
-        localDB.push(it2);
-        added++;
-        if(tv2) seenTV[tv2]=1;
-        seenCN[cn2]=1;
-      }
-
-      window.__KRX_MERGED__ = true;
-      if(typeof rebuildDBIndex==='function'){ try{ rebuildDBIndex(); }catch(_e){} }
-      console.log('[KRX] merged into localDB. added=', added, ' total=', localDB.length);
-      return true;
-    }catch(e){
-      console.warn('[KRX] merge failed', e);
-      return false;
+    // De-dup by tv, then by code+name
+    var seenTV={};
+    var seenCN={};
+    for(var i=0;i<localDB.length;i++){
+      var it=localDB[i]||{};
+      var tv=String(it.tv||'').toUpperCase();
+      if(tv) seenTV[tv]=1;
+      var cn=String(it.code||'')+'|'+String(it.name||'');
+      seenCN[cn]=1;
     }
-  }
-
-  function scheduleMerge(){
-    var tries = 0;
-    var maxTries = 60; // ~6s
-    var t = setInterval(function(){
-      tries++;
-      if(mergeOnce() || tries>=maxTries) clearInterval(t);
-    }, 100);
-
-    // Also try once after DOM is ready
-    if(document.readyState === 'loading'){
-      document.addEventListener('DOMContentLoaded', function(){ mergeOnce(); }, {once:true});
-    }else{
-      setTimeout(mergeOnce, 0);
+    for(var j=0;j<mapped.length;j++){
+      var it2=mapped[j];
+      var tv2=String(it2.tv||'').toUpperCase();
+      var cn2=String(it2.code||'')+'|'+String(it2.name||'');
+      if((tv2 && seenTV[tv2]) || seenCN[cn2]) continue;
+      localDB.push(it2);
+      if(tv2) seenTV[tv2]=1;
+      seenCN[cn2]=1;
     }
+    window.__KRX_MERGED__=true;
+    console.log('[KRX] merged into localDB:', mapped.length);
+  }catch(e){
+    console.warn('[KRX] merge failed', e);
   }
-
-  scheduleMerge();
 })();
 
 var dbByCode = Object.create(null);
@@ -2084,7 +1932,6 @@ async function rfPrice(id,silent){
     if(lp3){lp3.textContent=s.price;lp3.className='livep '+pc;}if(lc){lc.textContent=s.chg;lc.className='livec '+cc;}
     if(lt)lt.textContent=(s._src==='naver'?'📡 네이버':'📡 Yahoo')+' '+new Date().toLocaleTimeString('ko-KR');
     updSugg(s);calcPnl();
-    try{ if(s && s.price) recordPricePoint(s, s.price); }catch(e){}
   }
   renderList();
   if(document.getElementById('pgHome').classList.contains('active'))renderHome();
@@ -2365,19 +2212,17 @@ function ensureChartUiCss(){
   if (document.getElementById('tvui-css')) return;
   var st = document.createElement('style'); st.id='tvui-css';
   st.textContent =
-    '.tvhead{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:var(--tvbg,var(--panel2,var(--sf)));border-bottom:1px solid var(--tvframe,var(--border,var(--bd)));flex-shrink:0;gap:10px;}'
+    '.tvhead{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:#0d0f14;border-bottom:1px solid #1e2330;flex-shrink:0;gap:10px;}'
   + '.tvlhs{display:flex;align-items:center;gap:8px;}'
-  + '.tvmono{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted,var(--tx2));}'
+  + '.tvmono{font-family:"JetBrains Mono",monospace;font-size:11px;color:#7a8299;}'
   + '.tvsrc{font-family:"JetBrains Mono",monospace;font-size:10px;color:#9aa3b8;padding:2px 6px;border:1px solid #1e2330;border-radius:999px;background:#0f131b;}'
   + '.tvrhs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}'
   + '.extlk{font-size:11px;color:#00d4aa;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.18);border-radius:4px;padding:3px 10px;text-decoration:none;white-space:nowrap;}'
-  + '.tvctrl{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--tvbg,var(--panel2,var(--sf)));border-bottom:1px solid var(--tvframe,var(--border,var(--bd)));flex-wrap:wrap;}'
+  + '.tvctrl{display:flex;align-items:center;gap:10px;padding:6px 10px;background:#0d0f14;border-bottom:1px solid #1e2330;flex-wrap:wrap;}'
   + '.tvctrl label{font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:6px;}'
-  + '.tvctrl input{transform:translateY(1px);} .tvctrl .sep{width:1px;height:14px;background:#1e2330;display:inline-block;margin:0 2px;}'
-  + '.tvbtn{font-size:11px;color:var(--text,var(--tx2));background:var(--panel2,var(--sf2));border:1px solid var(--border,var(--bd));border-radius:6px;padding:4px 10px;cursor:pointer;}
-.tvbtn:hover{filter:brightness(0.98);}
-.tvbtn.active{background:var(--chip,rgba(37,99,235,.16));border-color:var(--a1,var(--ac));color:var(--text,var(--tx));}'
-  + '.tvbtn:hover{border-color:#2a3142;}'
+  + '.tvctrl input{transform:translateY(1px);} .tvctrl .sep{width:1px;height:14px;background:var(--border,var(--bd));display:inline-block;margin:0 2px;}'
+  + '.tvbtn{font-size:11px;color:var(--text,var(--tx2));background:var(--panel2,var(--sf2));border:1px solid var(--border,var(--bd));border-radius:6px;padding:4px 10px;cursor:pointer;}'
+  + '.tvbtn:hover{filter:brightness(0.98);} .tvbtn.active{background:var(--chip,rgba(37,99,235,.16));border-color:var(--a1,var(--ac));color:var(--text,var(--tx));}'
   + '.tvsel{font-size:11px;color:var(--text,var(--tx2));background:var(--panel2,var(--sf2));border:1px solid var(--border,var(--bd));border-radius:6px;padding:4px 8px;outline:none;}'
   + '.tvbody{flex:1;width:100%;display:flex;flex-direction:column;gap:10px;min-height:0;}'
   + '.tvmini{font-size:11px;color:var(--tx3);}'
@@ -2568,7 +2413,6 @@ function renderTradingViewWidget(tvSym, iv, el){
   var wrap = document.getElementById('lwc_wrap');
   if (!wrap) return;
 
-  try{ window.__sn_last_tv = { tvSym: tvSym, iv: iv, el: el }; }catch(e){}
   // interval mapping
   var interval = 'D';
   if (iv==='W') interval='W';
@@ -2596,14 +2440,12 @@ function renderTradingViewWidget(tvSym, iv, el){
   }
 
   var studies = encodeURIComponent('MASimple@tv-basicstudies,BB@tv-basicstudies,MACD@tv-basicstudies,RSI@tv-basicstudies');
-  var curTheme = (document.body.getAttribute('data-theme')==='dark') ? 'dark' : 'light';
-  var toolbarbg = (curTheme==='dark') ? '%230d0f14' : '%23ffffff';
   var src = 'https://s.tradingview.com/widgetembed/?frameElementId=tradingview'
     + '&symbol=' + encodeURIComponent(sym)
     + '&interval=' + encodeURIComponent(interval)
     + '&hidetoptoolbar=0&hidesidetoolbar=0&symboledit=1&saveimage=0'
-    + '&toolbarbg=' + toolbarbg + '&studies=' + studies
-    + '&theme=' + curTheme + '&style=1&timezone=Asia%2FSeoul&withdateranges=1'
+    + '&toolbarbg=%230d0f14&studies=' + studies
+    + '&theme=dark&style=1&timezone=Asia%2FSeoul&withdateranges=1'
     + '&hideideas=1&studies_overrides=%7B%7D&overrides=%7B%7D';
 
   wrap.innerHTML = '<div class="tvflex">' + (chipsHtml||'')
@@ -2620,7 +2462,7 @@ function renderNaverChartImageFallback(code, iv, tvUrl, el, err1, err2){
   wrap.innerHTML =
     '<div class="tvwarn">'
   +   '<div style="margin-bottom:10px"><b>국내 차트 데이터 호출이 차단/지연</b>되어 이미지로 대체 표시합니다.</div>'
-  +   '<img src="'+img+'" alt="naver chart" style="max-width:720px;width:100%;border:1px solid #1e2330;border-radius:10px;background:var(--tvbg);" />'
+  +   '<img src="'+img+'" alt="naver chart" style="max-width:720px;width:100%;border:1px solid #1e2330;border-radius:10px;background:#0d0f14;" />'
   +   '<div style="margin-top:10px">원인: '+ escapeHtml(err1||'') + (err2?(' / '+escapeHtml(err2)):'') +'</div>'
   +   '<div class="tvmini" style="margin-top:8px">상단의 <b>Naver/Yahoo</b> 링크로 상세 확인 가능</div>'
   + '</div>';
@@ -2857,7 +2699,7 @@ function showNoteLogPanel(s){
       var d = new Date(it.ts);
       var dt = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
         +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-      html += '<div style="border:1px solid #1e2330;border-radius:12px;padding:10px;background:var(--tvbg);">'
+      html += '<div style="border:1px solid #1e2330;border-radius:12px;padding:10px;background:#0d0f14;">'
         + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">'
         + '<div style="color:var(--tx3);font-size:11px;">'+escapeHtml(dt)+'</div>'
         + '<button class="rbtn" data-idx="'+idx+'">불러오기</button>'
@@ -3265,9 +3107,7 @@ function renderDetail(){
   if(s.tv)setTimeout(function(){loadTV(s.tv,tviv);},150);
   setTimeout(function(){renderRel(s);},400);
   if(s._at)updSugg(s);
-  setTimeout(function(){ try{ autoPrefillCommentIfEmpty(s); }catch(e){} }, 200);
 }
-
 function calcPnl(){var s=gbi(cid);if(!s)return;var er=document.getElementById('pnlR'),ee=document.getElementById('pnlE');if(!er)return;var pn=parseFloat((s.price||'').replace(/[^0-9.]/g,'')),bn=parseFloat((s.bp||'').replace(/[^0-9.]/g,'')),sn=parseFloat(s.sh||0);if(!isNaN(pn)&&!isNaN(bn)&&sn>0&&bn>0){var diff=(pn-bn)*sn,pct=((pn-bn)/bn*100).toFixed(2);er.textContent=(diff>=0?'+':'')+Math.round(diff).toLocaleString()+' ('+(diff>=0?'+':'')+pct+'%)';er.style.color=diff>=0?'var(--up)':'var(--dn)';if(ee)ee.textContent='평가금액 '+Math.round(pn*sn).toLocaleString();}else{er.textContent='---';er.style.color='var(--tx3)';if(ee)ee.textContent='';}}
 var fmap={name:'dName',trend:'dTrend',sig:'dSig',tgt:'dTgt',sl:'dSl',sec:'dSec',risk:'dRisk',kw:'dKw',bp:'dBp',sh:'dSh',cn:'dCn',bt:'dBt',st:'dSt',ol:'dOl',sy:'dSy',memo:'dMemo'};
 function uf(f){var s=gbi(cid);if(!s)return;var el=document.getElementById(fmap[f]);if(!el)return;s[f]=el.tagName==='SELECT'?el.options[el.selectedIndex].value:el.value;s.upd=new Date().toISOString();clearTimeout(svt);showSind('저장 중...','');svt=setTimeout(function(){sv();renderList();showSind('✓ 저장됨','saved');if(document.getElementById('pgHome').classList.contains('active'))renderHome();},700);}
