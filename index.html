@@ -10,7 +10,7 @@
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v168";
+window.APP_BUILD = "v170";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -3473,7 +3473,17 @@ body[data-theme="light"] .itab.active{color:#fff;}
         + '.krBtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}'
         + '.krBtn{appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;}'
         + '.krLinks{display:flex;gap:8px;flex-wrap:wrap;}'
-        + '.krLinks a{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);text-decoration:none;font-size:12px;}';
+        + '.krLinks a{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);text-decoration:none;font-size:12px;}'
+        + '.krStatus{display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:12px;}'
+        + '.krStatus .spin{width:14px;height:14px;border-radius:999px;border:2px solid var(--border);border-top-color:var(--text);animation:krspin 0.9s linear infinite;display:none;}'
+        + '.krStatus.loading .spin{display:inline-block;}'
+        + '@keyframes krspin{to{transform:rotate(360deg);}}'
+        + '.krFrameWrap{position:relative;}'
+        + '.krOverlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.12);backdrop-filter:blur(2px);}'
+        + '.krOverlay.show{display:flex;}'
+        + '.krOverlay .box{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:12px;}'
+        + '.krOverlay .box .spin{width:16px;height:16px;border-radius:999px;border:2px solid var(--border);border-top-color:var(--text);animation:krspin 0.9s linear infinite;}'
+        ;
         document.head.appendChild(st);
       }
 
@@ -3482,6 +3492,14 @@ body[data-theme="light"] .itab.active{color:#fff;}
       var dart   = 'https://dart.fss.or.kr/dsab001/main.do?autoSearch=true&textCrpNm=' + encodeURIComponent(code);
       var invKR  = 'https://kr.investing.com/search/?q=' + encodeURIComponent(code);
       var tvTab  = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent('KRX:'+code);
+      var tvEmbed = 'https://s.tradingview.com/widgetembed/?frameElementId=tradingview'
+        + '&symbol=' + encodeURIComponent('KRX:'+code)
+        + '&interval=' + encodeURIComponent('D')
+        + '&hidetoptoolbar=0&hidesidetoolbar=0&symboledit=1&saveimage=0'
+        + '&toolbarbg=' + (isLight?'%23ffffff':'%23111317')
+        + '&studies=' + encodeURIComponent('')
+        + '&theme=' + (isLight?'light':'dark') + '&style=1&timezone=Asia%2FSeoul&withdateranges=1'
+        + '&hideideas=1&studies_overrides=%7B%7D&overrides=%7B%7D';
 
       // AlphaSquare iframe (works only if AlphaSquare allows embedding)
       var alphaUrl = 'https://alphasquare.co.kr/home/stock/stock-summary?code='
@@ -3493,75 +3511,195 @@ body[data-theme="light"] .itab.active{color:#fff;}
       +   '<div class="krEmbedTop">'
       +     '<div class="krTabs">'
       +       '<button type="button" class="krTab active" id="krTabAlpha">AlphaSquare</button>'
+      +       '<button type="button" class="krTab" id="krTabTV">TradingView</button>'
       +       '<button type="button" class="krTab" id="krTabLinks">링크</button>'
       +     '</div>'
       +     '<div class="krMsg"><b>국내('+code+')</b> 차트는 <span style="color:var(--muted);">AlphaSquare iframe</span>을 우선 시도한다. (사이트 정책으로 차단되면 자동으로 링크 모드로 전환)</div>'
+      +     '<div class="krStatus loading" id="krChartStatus"><div class="spin"></div><div id="krStatusText">AlphaSquare 로딩 중…</div></div>'
       +   '</div>'
       +   '<div class="krFrameWrap" id="krAlphaWrap">'
       +     '<iframe id="krAlphaIfr" src="'+alphaUrl+'" allowfullscreen></iframe>'
+      +     '<div class="krOverlay show" id="krAlphaOverlay"><div class="box"><div class="spin"></div><div id="krAlphaOverlayText">AlphaSquare 로딩 중…</div></div></div>'
       +     '<div class="krBlock" id="krAlphaBlock" style="display:none;">'
       +       '<b>AlphaSquare 임베드가 차단된 듯하다.</b>'
       +       '<div class="krMsg">GitHub Pages/브라우저에서 일부 사이트는 iframe 삽입을 허용하지 않는다.</div>'
       +       '<div class="krBtns">'
       +         '<button type="button" class="krBtn" id="krBtnLinks">링크 모드로 보기</button>'
-      +         '<a class="krBtn" href="'+nMain+'" target="_blank" rel="noopener">AlphaSquare 대신 네이버 열기</a>'
+      +         '<button type="button" class="krBtn" id="krBtnRetry">AlphaSquare 다시 시도</button>'
+      +         '<a class="krBtn" href="'+alphaUrl+'" target="_blank" rel="noopener">AlphaSquare(새창)</a>'
+      +         '<a class="krBtn" href="'+tvTab+'" target="_blank" rel="noopener">TradingView(새창)</a>'
+      +         '<a class="krBtn" href="'+nChart+'" target="_blank" rel="noopener">네이버 차트(새창)</a>'
       +       '</div>'
       +     '</div>'
       +   '</div>'
+      +   '<div class="krFrameWrap" id="krTvWrap" style="display:none;">'
+      +     '<iframe id="krTvIfr" src="'+tvEmbed+'" allowfullscreen></iframe>'
+      +     '<div class="krOverlay show" id="krTvOverlay"><div class="box"><div class="spin"></div><div id="krTvOverlayText">TradingView 로딩 중…</div></div></div>'
+      +   '</div>'
       +   '<div class="krLinks" id="krLinks" style="display:none;">'
-      +     '<a target="_blank" rel="noopener" href="'+nMain+'">↗ 네이버(요약/실시간)</a>'
+      +     '<a target="_blank" rel="noopener" href="'+nMain+'">↗ 네이버(요약)</a>'
       +     '<a target="_blank" rel="noopener" href="'+nChart+'">↗ 네이버(차트)</a>'
-      +     '<a target="_blank" rel="noopener" href="'+invKR+'">↗ Investing(검색)</a>'
+      +     '<a target="_blank" rel="noopener" href="'+alphaUrl+'">↗ AlphaSquare</a>'
       +     '<a target="_blank" rel="noopener" href="'+tvTab+'">↗ TradingView</a>'
+      +     '<a target="_blank" rel="noopener" href="'+invKR+'">↗ Investing(검색)</a>'
       +     '<a target="_blank" rel="noopener" href="'+dart+'">↗ DART</a>'
       +   '</div>'
       + '</div>';
 
       // Tabs logic
-      var loaded = false;
-      // Persist previous embed failure to avoid repeated blank iframes
+      var loadedAlpha = false, loadedTV = false;
+      // status & overlays
+      var stBar = document.getElementById('krChartStatus');
+      var stTxt = document.getElementById('krStatusText');
+      var ovA = document.getElementById('krAlphaOverlay');
+      var ovATxt = document.getElementById('krAlphaOverlayText');
+      var ovT = document.getElementById('krTvOverlay');
+      var ovTTxt = document.getElementById('krTvOverlayText');
+      function setStatus(kind, text){
+        try{
+          if(stTxt) stTxt.textContent = text || '';
+          if(stBar){
+            stBar.classList.toggle('loading', kind==='loading');
+          }
+        }catch(e){}
+      }
+      function showOv(which, show, text){
+        try{
+          if(which==='a' && ovA){
+            ovA.classList.toggle('show', !!show);
+            if(ovATxt && text) ovATxt.textContent = text;
+          }
+          if(which==='t' && ovT){
+            ovT.classList.toggle('show', !!show);
+            if(ovTTxt && text) ovTTxt.textContent = text;
+          }
+        }catch(e){}
+      }
+
+      // Persist previous embed failure
       var asBlocked = false;
       try{ asBlocked = (localStorage.getItem('sn_as_iframe_blocked')==='1'); }catch(e){}
-      if(asBlocked){
-        // start in links mode
-        setTimeout(function(){ setActive(false); }, 0);
-      }
-      var ifr = document.getElementById('krAlphaIfr');
-      if(asBlocked && ifr){ try{ ifr.src='about:blank'; }catch(e){} }
+      var ifrA = document.getElementById('krAlphaIfr');
+      var ifrT = document.getElementById('krTvIfr');
       var blk = document.getElementById('krAlphaBlock');
+
       var tabA = document.getElementById('krTabAlpha');
+      var tabT = document.getElementById('krTabTV');
       var tabL = document.getElementById('krTabLinks');
+
       var links = document.getElementById('krLinks');
       var alphaWrap = document.getElementById('krAlphaWrap');
-      function setActive(a){
-        if(tabA) tabA.classList.toggle('active', a===true);
-        if(tabL) tabL.classList.toggle('active', a===false);
-        if(alphaWrap) alphaWrap.style.display = a===true ? 'block' : 'none';
-        if(links) links.style.display = a===true ? 'none' : 'flex';
+      var tvWrap = document.getElementById('krTvWrap');
+
+      function setMode(mode){
+        // mode: 'alpha' | 'tv' | 'links'
+        if(tabA) tabA.classList.toggle('active', mode==='alpha');
+        if(tabT) tabT.classList.toggle('active', mode==='tv');
+        if(tabL) tabL.classList.toggle('active', mode==='links');
+        if(alphaWrap) alphaWrap.style.display = (mode==='alpha') ? 'block' : 'none';
+        if(tvWrap) tvWrap.style.display = (mode==='tv') ? 'block' : 'none';
+        if(links) links.style.display = (mode==='links') ? 'flex' : 'none';
       }
-      if(tabA) tabA.addEventListener('click', function(){ setActive(true); });
-      if(tabL) tabL.addEventListener('click', function(){ setActive(false); });
+
+      if(tabA) tabA.addEventListener('click', function(){ setMode('alpha'); });
+      if(tabT) tabT.addEventListener('click', function(){ setMode('tv'); });
+      if(tabL) tabL.addEventListener('click', function(){ setMode('links'); });
 
       var btnLinks = document.getElementById('krBtnLinks');
-      if(btnLinks) btnLinks.addEventListener('click', function(){ setActive(false); });
+      if(btnLinks) btnLinks.addEventListener('click', function(){ setMode('links'); });
 
-      if(ifr){
-        ifr.addEventListener('load', function(){
-          loaded = true;
-          // hide warning block if loaded
+      // initial state
+      showOv('a', true, 'AlphaSquare 로딩 중…');
+      showOv('t', false);
+      setStatus('loading', asBlocked ? 'AlphaSquare 차단 이력 → TradingView로 표시한다.' : 'AlphaSquare 로딩 중…');
+
+      if(asBlocked){
+        // start in TradingView mode
+        setMode('tv');
+        showOv('t', true, 'TradingView 로딩 중…');
+        try{ if(ifrA) ifrA.src='about:blank'; }catch(e){}
+      }else{
+        setMode('alpha');
+      }
+
+      if(ifrA){
+        ifrA.addEventListener('load', function(){
+          loadedAlpha = true;
+          showOv('a', false);
           if(blk) blk.style.display = 'none';
+          setStatus('ok', 'AlphaSquare 로드됨');
+          // reset fail counters on success
+          try{
+            localStorage.removeItem('sn_as_fail_count');
+            localStorage.removeItem('sn_as_fail_ts');
+          }catch(e){}
+        });
+      }
+      if(ifrT){
+        ifrT.addEventListener('load', function(){
+          loadedTV = true;
+          showOv('t', false);
+          if(!loadedAlpha){
+            setStatus('ok', 'TradingView로 표시 중');
+          }
         });
       }
 
-      // If not loaded within 4s, show warning and switch to links to avoid "blank"
+      // High-confidence block/slow detection:
+      // - If Alpha iframe doesn't load within 10s, treat as "suspected blocked/slow" and show TradingView automatically.
+      // - Only persist "blocked" after 2 consecutive timeouts within 6 hours.
       setTimeout(function(){
-        if(!loaded){
-          try{ localStorage.setItem('sn_as_iframe_blocked','1'); }catch(e){}
+        if(!loadedAlpha && !asBlocked){
+          var now = Date.now();
+          var failCount = 0, lastTs = 0;
+          try{
+            failCount = parseInt(localStorage.getItem('sn_as_fail_count')||'0',10) || 0;
+            lastTs = parseInt(localStorage.getItem('sn_as_fail_ts')||'0',10) || 0;
+          }catch(e){}
+          if(!lastTs || (now - lastTs) > 6*60*60*1000) failCount = 0;
+          failCount += 1;
+          try{
+            localStorage.setItem('sn_as_fail_count', String(failCount));
+            localStorage.setItem('sn_as_fail_ts', String(now));
+          }catch(e){}
+          // show warning
           if(blk) blk.style.display = 'flex';
-          // 자동 전환: 사용자 경험상 바로 링크 모드가 낫다면 활성화
-          setActive(false);
+          setStatus('loading', 'AlphaSquare 로딩 지연/차단 의심 → TradingView로 자동 대체한다.');
+          // auto switch to TradingView iframe
+          setMode('tv');
+          showOv('t', true, 'TradingView 로딩 중…');
+          // persist blocked only after repeated failures
+          if(failCount >= 2){
+            try{ localStorage.setItem('sn_as_iframe_blocked','1'); }catch(e){}
+          }
         }
-      }, 4000);
+      }, 10000);
+
+      // Retry AlphaSquare
+      var btnRetry = document.getElementById('krBtnRetry');
+      if(btnRetry) btnRetry.addEventListener('click', function(){
+        try{
+          localStorage.removeItem('sn_as_iframe_blocked');
+          localStorage.removeItem('sn_as_fail_count');
+          localStorage.removeItem('sn_as_fail_ts');
+        }catch(e){}
+        asBlocked = false;
+        loadedAlpha = false;
+        if(blk) blk.style.display = 'none';
+        setMode('alpha');
+        showOv('a', true, 'AlphaSquare 다시 시도 중…');
+        setStatus('loading', 'AlphaSquare 다시 시도 중…');
+        if(ifrA){
+          try{
+            var base = alphaUrl;
+            var sep = (base.indexOf('?')>-1) ? '&' : '?';
+            ifrA.src = base + sep + 't=' + Date.now();
+          }catch(e){}
+        }
+      });
+
+
+
 
     }catch(e){
       try{
