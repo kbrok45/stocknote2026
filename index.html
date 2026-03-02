@@ -57,6 +57,96 @@
 </script>
 
 <meta charset="UTF-8">
+<script>
+
+/* ========== US DB LOADER (GitHub Pages safe) ==========
+   - Static file: usdb.min.json in repo root
+   - Format: array rows: [ticker, name, exch] where exch in {NASDAQ,NYSE,AMEX}
+   - Produces: window.usDB (normalized objects) + window.__US_DB_LOADED__/__US_DB_COUNT__
+*/
+(function(){
+  window.usDB = window.usDB || [];
+  window.__US_DB_LOADED__ = window.__US_DB_LOADED__ || false;
+  window.__US_DB_COUNT__  = window.__US_DB_COUNT__  || 0;
+
+  function normalizeEx(ex){
+    ex = String(ex||'').toUpperCase();
+    if(ex==='NYQ' || ex==='NYSE') return 'NYSE';
+    if(ex==='NMS' || ex==='NASDAQ') return 'NASDAQ';
+    if(ex==='ASE' || ex==='AMEX') return 'AMEX';
+    if(ex.indexOf('NY')===0) return 'NYSE';
+    return ex || 'US';
+  }
+  function toTV(ex, sym){
+    ex = normalizeEx(ex);
+    sym = String(sym||'').trim();
+    if(!sym) return '';
+    if(ex==='NYSE') return 'NYSE:'+sym;
+    if(ex==='AMEX') return 'AMEX:'+sym;
+    return 'NASDAQ:'+sym;
+  }
+  function decodeUSDB(rows){
+    if(!Array.isArray(rows)) return {ok:false, reason:'not-array'};
+    var out=[];
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i];
+      if(!r) continue;
+      // allow either [sym,name,ex] or object
+      var sym, name, ex;
+      if(Array.isArray(r)){
+        sym = r[0]; name = r[1]; ex = r[2];
+      }else if(typeof r==='object'){
+        sym = r.ticker||r.symbol||r.code;
+        name = r.name||r.longname||r.shortname;
+        ex = r.exch||r.exchange||r.mkt;
+      }
+      sym = String(sym||'').trim();
+      if(!sym) continue;
+      name = String(name||sym).trim();
+      ex = normalizeEx(ex);
+      out.push({
+        code: sym,
+        name: name,
+        sec: 'US',
+        mkt: ex,
+        tv: toTV(ex, sym),
+        ticker: sym,
+        overseas: true,
+        _src: 'usdb'
+      });
+    }
+    window.usDB = out;
+    window.__US_DB_LOADED__ = true;
+    window.__US_DB_COUNT__ = out.length;
+    console.log('[USDB] loaded. total=', out.length);
+    return {ok:true, total: out.length};
+  }
+
+  async function loadUSDBOnce(){
+    if(window.__US_DB_LOADED__) return {ok:true, cached:true, total:window.__US_DB_COUNT__};
+    var candidates=['./usdb.min.json','usdb.min.json','./data/usdb.min.json'];
+    var lastErr=null;
+    for(var i=0;i<candidates.length;i++){
+      var url=candidates[i];
+      try{
+        var r = await fetch(url, {cache:'no-store'});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        var js = await r.json();
+        return decodeUSDB(js);
+      }catch(e){ lastErr=e; }
+    }
+    console.warn('[USDB] load failed.', lastErr);
+    return {ok:false, error:String(lastErr||'load failed')};
+  }
+
+  // expose
+  window.loadUSDBOnce = loadUSDBOnce;
+
+  // auto-init: do not block app if missing; just try quietly
+  try{ setTimeout(function(){ loadUSDBOnce(); }, 30); }catch(e){}
+})();
+
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1527,12 +1617,52 @@ function handleHomeSearchKey(e){ return handleSearchKeyFor(e,'homeSearch','homeA
 // -------------------- Yahoo dynamic search (overseas) --------------------
 var __yahooCache__ = {};
 async function yahooSearch(q){
+  // Prefer local usDB for stable GitHub Pages usage (no CORS/rate-limit).
+  q=String(q||'').trim();
+  if(!q) return [];
+  try{
+    if(window.__US_DB_LOADED__ && Array.isArray(window.usDB) && window.usDB.length){
+      var ql=q.toLowerCase();
+      // match by ticker prefix OR name contains
+      var hits = window.usDB.filter(function(x){
+        if(!x) return false;
+        var sym=String(x.code||'').toLowerCase();
+        var nm=String(x.name||'').toLowerCase();
+        return (sym.indexOf(ql)===0) || (nm.indexOf(ql)>-1);
+      });
+      // scoring: ticker-prefix > name-contains, shorter ticker first
+      hits.sort(function(a,b){
+        function score(x){
+          var sym=String(x.code||''); var nm=String(x.name||'');
+          var s0 = (sym.toLowerCase().indexOf(ql)===0) ? 100 : 0;
+          var s1 = (nm.toLowerCase().indexOf(ql)>-1) ? 10 : 0;
+          var s2 = -Math.min(sym.length, 20);
+          // gentle pin for very common tickers
+          var pin = (/^(tsla|aapl|nvda|msft|amzn|googl|meta|nflx)$/i.test(sym)) ? 5 : 0;
+          return s0+s1+s2+pin;
+        }
+        return score(b)-score(a);
+      });
+      return hits.slice(0,10).map(function(x){
+        // ensure shape
+        return {
+          code: x.code,
+          name: x.name,
+          sec: x.sec||'US',
+          mkt: x.mkt||'US',
+          tv: x.tv||('NASDAQ:'+x.code),
+          ticker: x.code,
+          overseas: true,
+          _src: x._src||'usdb'
+        };
+      });
+    }
+  }catch(e){}
+
+  // Fallback to Yahoo (may be blocked by CORS in some environments)
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return [];
   if(typeof window.netMarkCall==='function') window.netMarkCall();
 
-  q=String(q||'').trim();
-  if(!q) return [];
-  if(__yahooCache__[q]) return __yahooCache__[q];
   var url='https://query2.finance.yahoo.com/v1/finance/search?q='+encodeURIComponent(q)+'&quotesCount=10&newsCount=0';
   try{
     var r=await fetch(url,{mode:'cors',credentials:'omit',cache:'no-store'});
