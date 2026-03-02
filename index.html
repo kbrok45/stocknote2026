@@ -6,11 +6,41 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <script>
+
+// --- External chart deep links (KR) ---
+function buildKrLinks(code, name){
+  code = String(code||'').trim();
+  name = String(name||'').trim();
+  var q = encodeURIComponent(code || name);
+  return {
+    naver_main: 'https://finance.naver.com/item/main.naver?code=' + encodeURIComponent(code),
+    naver_chart: 'https://finance.naver.com/item/fchart.naver?code=' + encodeURIComponent(code),
+    tradingview: 'https://kr.tradingview.com/symbols/KRX-' + encodeURIComponent(code) + '/',
+    investing_search: 'https://www.investing.com/search/?q=' + q
+  };
+}
+function renderLinkPanel(containerEl, links, extra){
+  if(!containerEl) return;
+  var h = '<div class="linkpanel">';
+  function btn(url, label){
+    if(!url) return '';
+    return '<a class="lbtn" href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+  }
+  h += btn(links.naver_main, '네이버(요약)');
+  h += btn(links.naver_chart, '네이버(차트)');
+  if(extra && extra.alphasquare) h += btn(extra.alphasquare, 'AlphaSquare');
+  h += btn(links.tradingview, 'TradingView');
+  // Investing direct chart is not reliably derivable from KR code; use search deep link (still no re-typing).
+  h += btn(links.investing_search, 'Investing(검색)');
+  h += '</div>';
+  containerEl.innerHTML = h;
+}
+
 /* Cache-buster for GitHub Pages:
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v171";
+window.APP_BUILD = "v172";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -661,6 +691,12 @@ body[data-theme="light"] .tvmono{color:var(--text);}
   .tvframe iframe{ min-height: 52vh; }
 }
 body{ padding-bottom: env(safe-area-inset-bottom); }
+
+/* --- v172 link panel --- */
+.linkpanel{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.linkpanel .lbtn{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;border-radius:10px;border:1px solid rgba(127,127,127,.35);text-decoration:none;font-size:13px;line-height:1}
+body.dark .linkpanel .lbtn{border-color:rgba(200,200,200,.25)}
+
 </style>
 
 <script>
