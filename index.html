@@ -10,7 +10,7 @@
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v160";
+window.APP_BUILD = "v164";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -485,6 +485,18 @@ input,select,textarea{background:#ffffff!important;color:var(--text)!important;b
 a{color:var(--primary)!important;}
 .tvcon,.tvframe{background:var(--tvbg)!important;}
 body[data-theme="light"]{
+  /* Legacy vars mapping for components that still use old palette */
+  --sf: var(--panel);
+  --sf2: var(--panel2);
+  --bd: var(--border);
+  --ac:#0f766e;
+  --a2: var(--a2);
+  --a3: var(--a3);
+  --up: var(--up);
+  --dn: var(--dn);
+  --tx: var(--text);
+  --tx2: var(--muted);
+  --tx3: #64748b;
   --bg:#f5f7fb;
   --panel:#ffffff;
   --panel2:#f8fafc;
@@ -559,6 +571,16 @@ body[data-theme="light"] .tvph{background:linear-gradient(180deg,rgba(255,255,25
 body[data-theme="light"] .cnote textarea{background:#ffffff;}
 body[data-theme="light"] .itab{color:var(--muted);}
 body[data-theme="light"] .itab.active{color:#fff;}
+
+
+/* v164: TradingView control bar visual balance in light theme */
+body[data-theme="light"] .tvhead{background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.98)); border-bottom:1px solid rgba(15,23,42,.10);}
+body[data-theme="light"] .tvctrl{background:rgba(255,255,255,.94); border-bottom:1px solid rgba(15,23,42,.10);}
+body[data-theme="light"] .tvbtn{background:rgba(15,23,42,.06); color:var(--text); border:1px solid rgba(15,23,42,.10);}
+body[data-theme="light"] .tvbtn:hover{background:rgba(15,23,42,.08);}
+body[data-theme="light"] .tvbtn.active{background:rgba(37,99,235,.12); border-color:rgba(37,99,235,.28); color:var(--a1);}
+body[data-theme="light"] .tvsel{background:rgba(15,23,42,.04); color:var(--text); border:1px solid rgba(15,23,42,.10);}
+body[data-theme="light"] .tvmono{color:var(--text);}
 
 </style>
 
