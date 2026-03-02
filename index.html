@@ -442,6 +442,9 @@ body[data-theme="light"] .cnote textarea{background:#ffffff;}
 body[data-theme="light"] .itab{color:var(--muted);}
 body[data-theme="light"] .itab.active{color:#fff;}
 
+
+.logo-build{margin-left:8px;padding:2px 8px;border-radius:999px;font-size:12px;opacity:.8;border:1px solid rgba(0,0,0,.15)}
+body.dark .logo-build{border-color:rgba(255,255,255,.18)}
 </style>
 </head>
 <body>
@@ -451,6 +454,7 @@ body[data-theme="light"] .itab.active{color:#fff;}
     <div class="logo-badge"><div class="logo-prof">PROF.</div><div class="logo-kim">KIM</div></div>
     <div class="logo-title">STOCK NOTE</div>
     <div class="logo-year">2026</div>
+    <div class="logo-build" id="buildTag">build v152</div>
   </div>
   <div class="hnav">
     <button class="hnb active" id="navHome" onclick="showPage('home')">🏠 홈</button>
@@ -1706,7 +1710,26 @@ function esc(s){ return escapeHtml(s); }
     var maxTries = 60; // ~6s
     var t = setInterval(function(){
       tries++;
-      if(mergeOnce() || tries>=maxTries) clearInterval(t);
+      if(mergeOnce() || tries>=maxTries){ clearInterval(t);
+      if(tries>=maxTries && !window.__KRX_MERGED__){
+        console.warn('[KRX] merge did not complete after retries. Possible GitHub Pages Jekyll/Liquid interference. Add .nojekyll at repo root.');
+        try{
+          var b=document.getElementById('krxDiagBanner');
+          if(!b){
+            b=document.createElement('div');
+            b.id='krxDiagBanner';
+            b.style.cssText='position:fixed;left:12px;bottom:12px;right:12px;z-index:99999;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.4;box-shadow:0 8px 30px rgba(0,0,0,.18);';
+            b.style.background = (document.body.classList.contains('dark')?'rgba(20,24,34,.96)':'rgba(255,255,255,.96)');
+            b.style.border = '1px solid ' + (document.body.classList.contains('dark')?'rgba(255,255,255,.18)':'rgba(0,0,0,.12)');
+            b.style.color = (document.body.classList.contains('dark')?'#e9eefc':'#1b2433');
+            b.innerHTML = '<b>국내 종목 DB 로드 실패</b> — GitHub Pages에서 자동완성이 안 되면, 저장소 루트에 <code>.nojekyll</code> (빈 파일) 을 추가한 뒤 다시 배포하세요. '+
+                          '<button id="btnForceRebuild" style="margin-left:8px;padding:4px 10px;border-radius:10px;border:1px solid rgba(0,0,0,.15);background:transparent;cursor:pointer;">지금 재시도</button>';
+            document.body.appendChild(b);
+            b.querySelector('#btnForceRebuild').onclick=function(){ try{ mergeOnce(); if(window.__KRX_MERGED__) b.remove(); }catch(e){} };
+          }
+        }catch(e){}
+      }
+ }
     }, 100);
 
     // Also try once after DOM is ready
