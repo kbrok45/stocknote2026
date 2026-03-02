@@ -476,6 +476,9 @@ body[data-theme="light"]{
   --a3:#4f46e5;
   --tvbg:#ffffff;
   --tvframe:#e2e8f0;
+
+  --tvbar-bg: linear-gradient(180deg, rgba(248,250,252,.98), rgba(241,245,249,.96));
+  --tvbar-tx: var(--tx);
 }
 body[data-theme="dark"]{
   --bg:#0b0f14;
@@ -2212,13 +2215,13 @@ function ensureChartUiCss(){
   if (document.getElementById('tvui-css')) return;
   var st = document.createElement('style'); st.id='tvui-css';
   st.textContent =
-    '.tvhead{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:#0d0f14;border-bottom:1px solid #1e2330;flex-shrink:0;gap:10px;}'
+    '.tvhead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--tvbar-bg);border-bottom:1px solid var(--bd);border-top-left-radius:14px;border-top-right-radius:14px}'
   + '.tvlhs{display:flex;align-items:center;gap:8px;}'
   + '.tvmono{font-family:"JetBrains Mono",monospace;font-size:11px;color:#7a8299;}'
   + '.tvsrc{font-family:"JetBrains Mono",monospace;font-size:10px;color:#9aa3b8;padding:2px 6px;border:1px solid #1e2330;border-radius:999px;background:#0f131b;}'
   + '.tvrhs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}'
   + '.extlk{font-size:11px;color:#00d4aa;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.18);border-radius:4px;padding:3px 10px;text-decoration:none;white-space:nowrap;}'
-  + '.tvctrl{display:flex;align-items:center;gap:10px;padding:6px 10px;background:#0d0f14;border-bottom:1px solid #1e2330;flex-wrap:wrap;}'
+  + '.tvctrl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:var(--tvbar-bg);border-bottom:1px solid var(--bd)}'
   + '.tvctrl label{font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:6px;}'
   + '.tvctrl input{transform:translateY(1px);} .tvctrl .sep{width:1px;height:14px;background:var(--border,var(--bd));display:inline-block;margin:0 2px;}'
   + '.tvbtn{font-size:11px;color:var(--text,var(--tx2));background:var(--panel2,var(--sf2));border:1px solid var(--border,var(--bd));border-radius:6px;padding:4px 10px;cursor:pointer;}'
@@ -2412,6 +2415,8 @@ function tryYahooFallback(code, iv, tvUrl, el, cacheKey, okCb, errCb){
 function renderTradingViewWidget(tvSym, iv, el){
   var wrap = document.getElementById('lwc_wrap');
   if (!wrap) return;
+  var isLight = (document.body.getAttribute('data-theme')==='light');
+  var tvToolbar = isLight ? '%23f8fafc' : '%230d0f14';
 
   // interval mapping
   var interval = 'D';
@@ -2444,8 +2449,8 @@ function renderTradingViewWidget(tvSym, iv, el){
     + '&symbol=' + encodeURIComponent(sym)
     + '&interval=' + encodeURIComponent(interval)
     + '&hidetoptoolbar=0&hidesidetoolbar=0&symboledit=1&saveimage=0'
-    + '&toolbarbg=%230d0f14&studies=' + studies
-    + '&theme=dark&style=1&timezone=Asia%2FSeoul&withdateranges=1'
+    + '&toolbarbg=' + tvToolbar + '&studies=' + studies
+    + '&theme=' + (isLight?'light':'dark') + '&style=1&timezone=Asia%2FSeoul&withdateranges=1'
     + '&hideideas=1&studies_overrides=%7B%7D&overrides=%7B%7D';
 
   wrap.innerHTML = '<div class="tvflex">' + (chipsHtml||'')
@@ -3547,29 +3552,47 @@ document.addEventListener('DOMContentLoaded', function(){
     return "NASDAQ:"+sym;
   }
   function searchUSDB(ql){
-    var q=String(ql||"").trim().toLowerCase();
+    var q = String(ql||"").trim().toLowerCase();
     if(!q) return [];
-    var q0=q.replace(/\s+/g,"");
-    return usDB.map(function(x){
-      var t=String(x.t||""); var n=String(x.n||""); var ex=String(x.ex||"NASDAQ");
-      var tl=t.toLowerCase(); var nl=n.toLowerCase();
-      var score=0;
-      if(tl===q0) score+=500;
-      if(tl.indexOf(q0)===0) score+=220;
-      if(tl.indexOf(q0)>0) score+=120;
-      if(nl.indexOf(q)>-1) score+=70;
-      if(nl.indexOf(q)===0) score+=90;
-      return {x:x, score:score};
-    }).filter(function(o){return o.score>0;})
-      .sort(function(a,b){return b.score-a.score;})
-      .slice(0,10)
-      .map(function(o){
-        var x=o.x;
-        var t=String(x.t||"").trim().toUpperCase();
-        var ex=String(x.ex||"NASDAQ").trim().toUpperCase();
-        var tv=buildTVSymbolFromUS(t, ex);
-        return { id:"US_"+t, name:x.n+" ("+t+")", code:t, ticker:t, tv:tv, mkt:"US", sec:"US" };
-      });
+    function norm(s){ return String(s||"").toLowerCase().replace(/[\s\.\-_'"]/g,""); }
+    var nq = norm(q);
+
+    var scored = [];
+    for(var i=0;i<usDB.length;i++){
+      var x = usDB[i]||{};
+      var t = String(x.t||"").trim();
+      var n = String(x.n||"").trim();
+      if(!t && !n) continue;
+
+      var nt = norm(t);
+      var nn = norm(n);
+
+      var score = -1;
+      if(nt && nt.indexOf(nq)===0) score = 0;              // ticker prefix (best)
+      else if(nn && nn.indexOf(nq)===0) score = 1;         // name prefix
+      else continue;                                       // strict: prefix only
+
+      // Slight boost for exact prefix (shorter distance)
+      var extra = (score===0 ? nt.length : nn.length);
+      scored.push({x:x, score:score, extra:extra});
+    }
+
+    scored.sort(function(a,b){
+      if(a.score!==b.score) return a.score-b.score;
+      if(a.extra!==b.extra) return a.extra-b.extra;
+      // stable fallback: ticker
+      var at = String((a.x||{}).t||"");
+      var bt = String((b.x||{}).t||"");
+      return at.localeCompare(bt);
+    });
+
+    return scored.slice(0, 30).map(function(o){
+      var x=o.x||{};
+      var t=String(x.t||"").trim();
+      var ex=String(x.ex||"NASDAQ").trim().toUpperCase();
+      var tv=buildTVSymbolFromUS(t, ex);
+      return { id:"US_"+t, name:x.n+" ("+t+")", code:t, ticker:t, tv:tv, mkt:"US", sec:"US" };
+    });
   }
 
   // ---- Replace runSearch safely (keeps original UI expectations) ----
