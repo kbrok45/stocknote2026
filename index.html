@@ -3313,31 +3313,111 @@ body[data-theme="light"] .itab.active{color:#fff;}
       var wrap = document.getElementById('lwc_wrap');
       if(!wrap) return;
 
+      // Inject minimal CSS once (light/dark friendly)
+      if(!document.getElementById('kr_embed_css')){
+        var st = document.createElement('style');
+        st.id = 'kr_embed_css';
+        st.textContent =
+          '.krEmbed{display:flex;flex-direction:column;gap:10px;height:100%;}'
+        + '.krEmbedTop{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}'
+        + '.krTabs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}'
+        + '.krTab{appearance:none;border:1px solid var(--border);background:var(--panel2);color:var(--text);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;}'
+        + '.krTab.active{background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.35);}'
+        + '.krMsg{color:var(--muted);font-size:12px;line-height:1.45;}'
+        + '.krFrameWrap{position:relative;flex:1;min-height:260px;border:1px solid var(--tvframe);border-radius:14px;overflow:hidden;background:var(--tvbg);}'
+        + '.krFrameWrap iframe{width:100%;height:100%;border:0;display:block;background:var(--tvbg);}'
+        + '.krBlock{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.06));}'
+        + 'body[data-theme="dark"] .krBlock{background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.25));}'
+        + '.krBlock b{color:var(--text);}'
+        + '.krBtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}'
+        + '.krBtn{appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;}'
+        + '.krLinks{display:flex;gap:8px;flex-wrap:wrap;}'
+        + '.krLinks a{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);text-decoration:none;font-size:12px;}';
+        document.head.appendChild(st);
+      }
+
       var nMain = 'https://finance.naver.com/item/main.naver?code=' + encodeURIComponent(code);
       var nChart = 'https://finance.naver.com/item/fchart.naver?code=' + encodeURIComponent(code);
-      var invSearch = 'https://kr.investing.com/search/?q=' + encodeURIComponent(code);
-      var invGlobal = 'https://www.investing.com/search/?q=' + encodeURIComponent(code);
-      // AlphaSquare: 공식 임베드/검색 URL이 고정 공개되어 있지 않아 홈 + 검색 안내 링크로 제공
-      var alphaHome = 'https://alphasquare.co.kr/';
-      // TradingView full site (new tab) – embed may be restricted for KRX
-      var tvTab = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent('KRX:'+code);
+      var dart   = 'https://dart.fss.or.kr/dsab001/main.do?autoSearch=true&textCrpNm=' + encodeURIComponent(code);
+      var invKR  = 'https://kr.investing.com/search/?q=' + encodeURIComponent(code);
+      var tvTab  = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent('KRX:'+code);
 
+      // AlphaSquare iframe (works only if AlphaSquare allows embedding)
+      var alphaUrl = 'https://alphasquare.co.kr/home/stock/stock-summary?code='
+        + encodeURIComponent(code) + '&v=1&hideHeader=true';
+
+      // Build UI
       wrap.innerHTML =
-        '<div class="chartlinks">'
-        + '<div class="hint"><b>국내 종목('+code+')</b>은 브라우저 단독 HTML에서 분봉 원시데이터 호출이 CORS로 차단되고, TradingView 임베드도 KRX 심볼을 제한하는 경우가 있어<br>'
-        + '가장 빠르고 안정적인 방식으로 <b>외부 차트 링크</b>를 제공합니다.</div>'
-        + '<div class="btnrow">'
-        +   '<a target="_blank" rel="noopener" href="'+nMain+'">네이버 실시간/분봉</a>'
-        +   '<a target="_blank" rel="noopener" href="'+nChart+'">네이버 차트</a>'
-        +   '<a class="alt" target="_blank" rel="noopener" href="'+invSearch+'">Investing(kr) 검색</a>'
-        +   '<a class="alt" target="_blank" rel="noopener" href="'+invGlobal+'">Investing(en) 검색</a>'
-        +   '<a class="alt" target="_blank" rel="noopener" href="'+alphaHome+'">알파스퀘어</a>'
-        +   '<a target="_blank" rel="noopener" href="'+tvTab+'">TradingView(새 탭)</a>'
-        + '</div>'
-        + '<div class="hint" style="margin-top:10px;opacity:.7">※ 알파스퀘어는 사이트 내 검색창에서 <b>'+code+'</b>를 입력해 찾을 수 있습니다.</div>'
-        + '</div>';
-    }catch(err){
-      console.warn('renderKoreaExternalChartPanel failed', err);
+        '<div class="krEmbed">'
+      +   '<div class="krEmbedTop">'
+      +     '<div class="krTabs">'
+      +       '<button type="button" class="krTab active" id="krTabAlpha">AlphaSquare</button>'
+      +       '<button type="button" class="krTab" id="krTabLinks">링크</button>'
+      +     '</div>'
+      +     '<div class="krMsg"><b>국내('+code+')</b> 차트는 <span style="color:var(--muted);">AlphaSquare iframe</span>을 우선 시도한다. (사이트 정책으로 차단되면 자동으로 링크 모드로 전환)</div>'
+      +   '</div>'
+      +   '<div class="krFrameWrap" id="krAlphaWrap">'
+      +     '<iframe id="krAlphaIfr" src="'+alphaUrl+'" allowfullscreen></iframe>'
+      +     '<div class="krBlock" id="krAlphaBlock" style="display:none;">'
+      +       '<b>AlphaSquare 임베드가 차단된 듯하다.</b>'
+      +       '<div class="krMsg">GitHub Pages/브라우저에서 일부 사이트는 iframe 삽입을 허용하지 않는다.</div>'
+      +       '<div class="krBtns">'
+      +         '<button type="button" class="krBtn" id="krBtnLinks">링크 모드로 보기</button>'
+      +         '<a class="krBtn" href="'+nMain+'" target="_blank" rel="noopener">AlphaSquare 대신 네이버 열기</a>'
+      +       '</div>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="krLinks" id="krLinks" style="display:none;">'
+      +     '<a target="_blank" rel="noopener" href="'+nMain+'">↗ 네이버(요약/실시간)</a>'
+      +     '<a target="_blank" rel="noopener" href="'+nChart+'">↗ 네이버(차트)</a>'
+      +     '<a target="_blank" rel="noopener" href="'+invKR+'">↗ Investing(검색)</a>'
+      +     '<a target="_blank" rel="noopener" href="'+tvTab+'">↗ TradingView</a>'
+      +     '<a target="_blank" rel="noopener" href="'+dart+'">↗ DART</a>'
+      +   '</div>'
+      + '</div>';
+
+      // Tabs logic
+      var loaded = false;
+      var ifr = document.getElementById('krAlphaIfr');
+      var blk = document.getElementById('krAlphaBlock');
+      var tabA = document.getElementById('krTabAlpha');
+      var tabL = document.getElementById('krTabLinks');
+      var links = document.getElementById('krLinks');
+      var alphaWrap = document.getElementById('krAlphaWrap');
+      function setActive(a){
+        if(tabA) tabA.classList.toggle('active', a===true);
+        if(tabL) tabL.classList.toggle('active', a===false);
+        if(alphaWrap) alphaWrap.style.display = a===true ? 'block' : 'none';
+        if(links) links.style.display = a===true ? 'none' : 'flex';
+      }
+      if(tabA) tabA.addEventListener('click', function(){ setActive(true); });
+      if(tabL) tabL.addEventListener('click', function(){ setActive(false); });
+
+      var btnLinks = document.getElementById('krBtnLinks');
+      if(btnLinks) btnLinks.addEventListener('click', function(){ setActive(false); });
+
+      if(ifr){
+        ifr.addEventListener('load', function(){
+          loaded = true;
+          // hide warning block if loaded
+          if(blk) blk.style.display = 'none';
+        });
+      }
+
+      // If not loaded within 4s, show warning and switch to links to avoid "blank"
+      setTimeout(function(){
+        if(!loaded){
+          if(blk) blk.style.display = 'flex';
+          // 자동 전환: 사용자 경험상 바로 링크 모드가 낫다면 활성화
+          setActive(false);
+        }
+      }, 4000);
+
+    }catch(e){
+      try{
+        var wrap2 = document.getElementById('lwc_wrap');
+        if(wrap2) wrap2.innerHTML = '<div style="color:var(--danger);font-size:12px;">국내 차트 패널 오류: '+String(e)+'</div>';
+      }catch(_){}
     }
   };
 
