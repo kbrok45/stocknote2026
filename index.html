@@ -10,7 +10,7 @@
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v164";
+window.APP_BUILD = "v165";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -90,7 +90,8 @@ window.__ASSET_VER__ = window.APP_BUILD;
    - Produces: window.usDB (normalized objects) + window.__US_DB_LOADED__/__US_DB_COUNT__
 */
 (function(){
-  window.usDB = window.usDB || [];
+  window.usMiniDB = window.usMiniDB || [];
+  window.usDBObjects = window.usDBObjects || [];
   window.__US_DB_LOADED__ = window.__US_DB_LOADED__ || false;
   window.__US_DB_COUNT__  = window.__US_DB_COUNT__  || 0;
 
@@ -110,25 +111,32 @@ window.__ASSET_VER__ = window.APP_BUILD;
     if(ex==='AMEX') return 'AMEX:'+sym;
     return 'NASDAQ:'+sym;
   }
-  function decodeUSDB(rows){
+  function decodeUSDB(rows, opts){
+    opts = opts || {};
     if(!Array.isArray(rows)) return {ok:false, reason:'not-array'};
-    var out=[];
+    // Build 2 representations:
+    //  1) usMiniDB: compact for fast autocomplete [{t,n,ex}]
+    //  2) usDBObjects: normalized objects (future use)
+    var mini = [];
+    var out  = [];
     for(var i=0;i<rows.length;i++){
       var r=rows[i];
       if(!r) continue;
-      // allow either [sym,name,ex] or object
       var sym, name, ex;
       if(Array.isArray(r)){
         sym = r[0]; name = r[1]; ex = r[2];
       }else if(typeof r==='object'){
-        sym = r.ticker||r.symbol||r.code;
-        name = r.name||r.longname||r.shortname;
-        ex = r.exch||r.exchange||r.mkt;
+        sym = r.ticker||r.symbol||r.code||r.t;
+        name = r.name||r.longname||r.shortname||r.n;
+        ex = r.exch||r.exchange||r.mkt||r.ex;
       }
       sym = String(sym||'').trim();
       if(!sym) continue;
       name = String(name||sym).trim();
       ex = normalizeEx(ex);
+
+      mini.push({ t: sym, n: name, ex: ex });
+
       out.push({
         code: sym,
         name: name,
@@ -140,11 +148,41 @@ window.__ASSET_VER__ = window.APP_BUILD;
         _src: 'usdb'
       });
     }
-    window.usDB = out;
+
+    // Merge or replace
+    if(opts.append && Array.isArray(window.usMiniDB) && window.usMiniDB.length){
+      var seen = {};
+      for(var k=0;k<window.usMiniDB.length;k++){
+        var tt = String((window.usMiniDB[k]||{}).t||'').toUpperCase();
+        if(tt) seen[tt]=1;
+      }
+      for(var j=0;j<mini.length;j++){
+        var mt = String((mini[j]||{}).t||'').toUpperCase();
+        if(mt && !seen[mt]){ window.usMiniDB.push(mini[j]); seen[mt]=1; }
+      }
+    }else{
+      window.usMiniDB = mini;
+    }
+
+    if(opts.append && Array.isArray(window.usDBObjects) && window.usDBObjects.length){
+      var seen2 = {};
+      for(var k2=0;k2<window.usDBObjects.length;k2++){
+        var tt2 = String((window.usDBObjects[k2]||{}).code||'').toUpperCase();
+        if(tt2) seen2[tt2]=1;
+      }
+      for(var j2=0;j2<out.length;j2++){
+        var mt2 = String((out[j2]||{}).code||'').toUpperCase();
+        if(mt2 && !seen2[mt2]){ window.usDBObjects.push(out[j2]); seen2[mt2]=1; }
+      }
+    }else{
+      window.usDBObjects = out;
+    }
+
     window.__US_DB_LOADED__ = true;
-    window.__US_DB_COUNT__ = out.length;
-    console.log('[USDB] loaded. total=', out.length);
-    return {ok:true, total: out.length};
+    window.__US_DB_COUNT__  = (window.usMiniDB||[]).length;
+
+    console.log('[USDB] loaded. total=', window.__US_DB_COUNT__);
+    return {ok:true, total: window.__US_DB_COUNT__};
   }
 
   async function loadUSDBOnce(){
@@ -154,7 +192,7 @@ window.__ASSET_VER__ = window.APP_BUILD;
     for(var i=0;i<candidates.length;i++){
       var url=candidates[i];
       try{
-        var r = await fetch(url, {cache:'no-store'});
+        var r = await fetch(url + '?v=' + encodeURIComponent(window.__ASSET_VER__||''), {cache:'no-store'});
         if(!r.ok) throw new Error('HTTP '+r.status);
         var js = await r.json();
         return decodeUSDB(js);
@@ -163,6 +201,39 @@ window.__ASSET_VER__ = window.APP_BUILD;
     console.warn('[USDB] load failed.', lastErr);
     return {ok:false, error:String(lastErr||'load failed')};
   }
+
+
+  // ---- Optional chunk loader (for future US DB expansion) ----
+  // Convention: put chunk files at repo root:
+  //   usdb.a.min.json, usdb.b.min.json, ... usdb.0.min.json (optional)
+  // Each file uses the same rows format as usdb.min.json.
+  window.__US_CHUNK_LOADED__ = window.__US_CHUNK_LOADED__ || {};
+  async function loadUSChunkOnce(ch){
+    ch = String(ch||'').toLowerCase();
+    if(!ch) return {ok:false, reason:'empty'};
+    if(window.__US_CHUNK_LOADED__[ch]) return {ok:true, cached:true};
+    var candidates=[
+      './usdb.'+ch+'.min.json',
+      'usdb.'+ch+'.min.json',
+      './data/usdb.'+ch+'.min.json'
+    ];
+    var lastErr=null;
+    for(var i=0;i<candidates.length;i++){
+      var url=candidates[i];
+      try{
+        // cache-bust for GitHub Pages
+        var r = await fetch(url + '?v=' + encodeURIComponent(window.__ASSET_VER__||''), {cache:'no-store'});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        var js = await r.json();
+        var out = decodeUSDB(js, {append:true});
+        window.__US_CHUNK_LOADED__[ch] = true;
+        return out;
+      }catch(e){ lastErr=e; }
+    }
+    // do not mark as loaded on failure (file may not exist)
+    return {ok:false, error:String(lastErr||'chunk load failed')};
+  }
+  window.loadUSChunkOnce = loadUSChunkOnce;
 
   // expose
   window.loadUSDBOnce = loadUSDBOnce;
@@ -1781,6 +1852,17 @@ async function runSearch(q,lid){
   // 2) If no local results, offer "manual add" and attempt Yahoo dynamic search for US
 // US offline autocomplete fallback (works even when Yahoo search is blocked by CORS)
 try{
+  // Opportunistic lazy-load US chunk by first character (non-blocking)
+  try{
+    var first = String(ql||'').trim().charAt(0);
+    if(first && /[a-z0-9]/i.test(first) && typeof window.loadUSChunkOnce==='function'){
+      // don't stall UI: race with a short timeout
+      await Promise.race([
+        window.loadUSChunkOnce(first),
+        new Promise(function(res){ setTimeout(function(){ res(null); }, 120); })
+      ]);
+    }
+  }catch(e){}
   var usRes = searchUSDB(ql);
   if(usRes && usRes.length){
     var seen={};
@@ -3400,7 +3482,15 @@ body[data-theme="light"] .itab.active{color:#fff;}
 
       // Tabs logic
       var loaded = false;
+      // Persist previous embed failure to avoid repeated blank iframes
+      var asBlocked = false;
+      try{ asBlocked = (localStorage.getItem('sn_as_iframe_blocked')==='1'); }catch(e){}
+      if(asBlocked){
+        // start in links mode
+        setTimeout(function(){ setActive(false); }, 0);
+      }
       var ifr = document.getElementById('krAlphaIfr');
+      if(asBlocked && ifr){ try{ ifr.src='about:blank'; }catch(e){} }
       var blk = document.getElementById('krAlphaBlock');
       var tabA = document.getElementById('krTabAlpha');
       var tabL = document.getElementById('krTabLinks');
@@ -3429,6 +3519,7 @@ body[data-theme="light"] .itab.active{color:#fff;}
       // If not loaded within 4s, show warning and switch to links to avoid "blank"
       setTimeout(function(){
         if(!loaded){
+          try{ localStorage.setItem('sn_as_iframe_blocked','1'); }catch(e){}
           if(blk) blk.style.display = 'flex';
           // 자동 전환: 사용자 경험상 바로 링크 모드가 낫다면 활성화
           setActive(false);
@@ -3648,7 +3739,7 @@ document.addEventListener('DOMContentLoaded', function(){
 /* ===== v110 Foreign autocomplete + TV search fix (safe patch, keeps Drive stable) ===== */
 (function(){
   // ---- US mini DB + helpers ----
-  var usDB = [
+  var usDB = (window.usMiniDB && window.usMiniDB.length ? window.usMiniDB : [
     {t:"AAPL", n:"Apple", ex:"NASDAQ"},{t:"MSFT", n:"Microsoft", ex:"NASDAQ"},{t:"NVDA", n:"NVIDIA", ex:"NASDAQ"},
     {t:"AMZN", n:"Amazon", ex:"NASDAQ"},{t:"GOOGL", n:"Alphabet (Google) A", ex:"NASDAQ"},{t:"GOOG", n:"Alphabet (Google) C", ex:"NASDAQ"},
     {t:"META", n:"Meta Platforms", ex:"NASDAQ"},{t:"TSLA", n:"Tesla", ex:"NASDAQ"},{t:"NFLX", n:"Netflix", ex:"NASDAQ"},
@@ -3657,7 +3748,10 @@ document.addEventListener('DOMContentLoaded', function(){
     {t:"CRM", n:"Salesforce", ex:"NYSE"},{t:"ORCL", n:"Oracle", ex:"NYSE"},{t:"JPM", n:"JPMorgan Chase", ex:"NYSE"},
     {t:"BRK.B", n:"Berkshire Hathaway B", ex:"NYSE"},{t:"V", n:"Visa", ex:"NYSE"},{t:"MA", n:"Mastercard", ex:"NYSE"},
     {t:"WMT", n:"Walmart", ex:"NYSE"},{t:"DIS", n:"Walt Disney", ex:"NYSE"},{t:"KO", n:"Coca-Cola", ex:"NYSE"}
-  ];
+  ]);
+  // keep reference fresh if async loader arrives later
+  try{ setInterval(function(){ if(window.usMiniDB && window.usMiniDB.length && usDB!==window.usMiniDB){ usDB=window.usMiniDB; } }, 1000); }catch(e){}
+
   var aliasNameToTicker = {
     "tesla":"TSLA","tesla inc":"TSLA","tesla motors":"TSLA",
     "apple":"AAPL","microsoft":"MSFT","nvidia":"NVDA","amazon":"AMZN",
@@ -3687,8 +3781,8 @@ document.addEventListener('DOMContentLoaded', function(){
     var scored = [];
     for(var i=0;i<usDB.length;i++){
       var x = usDB[i]||{};
-      var t = String(x.t||"").trim();
-      var n = String(x.n||"").trim();
+      var t = String(x.t||x.code||x.ticker||x.symbol||"").trim();
+      var n = String(x.n||x.name||x.longname||x.shortname||"").trim();
       if(!t && !n) continue;
 
       var nt = norm(t);
