@@ -10,7 +10,7 @@
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v166";
+window.APP_BUILD = "v167";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -1051,7 +1051,7 @@ var CLIENT_ID = localStorage.getItem('snv5_clientId') || '';
 var DRIVE_FNAME = '주식투자전략노트_data.json';
 
 if (!stocks.length) {
-  var t=window.__ASSET_VER__;
+  var t = Date.now();
   stocks=[
     {id:t+1,name:'삼성전자',code:'005930',mkt:'KOSPI',ticker:'005930.KS',tv:'KRX:005930',price:'',chg:'',trend:'up',sig:'buy',tgt:'78,000',sl:'73,500',cn:'120일 이평선 지지. MACD 골든크로스.',bt:'75,000원 이하 분할매수',st:'78,000 → 80,000 단계 매도',ol:'HBM 수주 확대, 하반기 실적 개선',sy:'분할매수 1차70%/2차30%',risk:'2',bp:'75000',sh:'100',memo:'AI 반도체 수혜주',sec:'반도체',upd:new Date().toISOString()},
     {id:t+2,name:'SK하이닉스',code:'000660',mkt:'KOSPI',ticker:'000660.KS',tv:'KRX:000660',price:'',chg:'',trend:'up',sig:'buy',tgt:'200,000',sl:'181,000',cn:'신고가 후 눌림',bt:'185,000 눌림 매수',st:'200,000 목표',ol:'HBM3E 양산',sy:'모멘텀 단기매매',risk:'3',bp:'187000',sh:'30',memo:'변동성 주의',sec:'반도체',upd:new Date().toISOString()},
@@ -1070,7 +1070,7 @@ function sv() {
     svt = setTimeout(function(){ saveToDrive(); }, 3000);
   }
 }
-function gbi(id){ return stocks.find(function(s){return s.id===id;}); }
+function gbi(id){ return stocks.find(function(s){return String(s.id)===String(id);}); }
 
 // ══════════════════════════════════════════
 
@@ -1604,7 +1604,7 @@ function renderQuickGrid() {
     var tc2=s.trend==='up'?'tu':s.trend==='down'?'td':'tn';
     var ti=s.trend==='up'?'▲':s.trend==='down'?'▼':'━';
     var sigTag={buy:'<span class="tag tb">매수</span>',sell:'<span class="tag ts2">매도</span>',hold:'<span class="tag th">보유</span>',watch:'<span class="tag tw">관심</span>'}[s.sig]||'';
-    return '<div class="qcard '+tc2+' '+(selectedIds.has(String(s.id))?'selected':'')+'" onclick="onStockCardClick(' + s.id + ')"><div class="qsig">'+sigTag+'</div>'+
+    return '<div class="qcard '+tc2+' '+(selectedIds.has(String(s.id))?\'selected\':\'\')+\'" onclick="onStockCardClick(\\\'\'+String(s.id)+\\\'\')"><div class="qsig">''+sigTag+'</div>'+
       (selectionMode?'<input class="selbox" type="checkbox" onclick="event.stopPropagation();toggleSelected(\\\''+s.id+'\\\')" '+(selectedIds.has(String(s.id))?'checked':'')+'>':'')+
       '<div class="qname">'+s.name+'</div><div class="qcode">'+s.code+(s.mkt?' · '+s.mkt:'')+'</div><div class="qprice '+pc+'">'+(s.price||'---')+'</div><div class="qchg '+pc+'">'+ti+' '+(s.chg||'')+'</div></div>';
   }).join('');
@@ -1799,6 +1799,26 @@ async function runSearch(q,lid){
   var ql=qRaw.toLowerCase().trim();
   if(!ql){ac.className='hac';return;}
 
+  // Hangul initial-consonant (초성) matching helpers
+  // - Supports queries like 'ㄴ', 'ㅅㅇ', etc.
+  function __isJamoOnly(s){ return /^[ㄱ-ㅎ]+$/.test(s); }
+  var __CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  function __getChosung(str){
+    str = String(str||'');
+    var out='';
+    for(var i=0;i<str.length;i++){
+      var c=str.charCodeAt(i);
+      if(c>=0xAC00 && c<=0xD7A3){
+        var idx=Math.floor((c-0xAC00)/588);
+        out += __CHO[idx] || '';
+      }else if(/[A-Za-z0-9]/.test(str[i])){
+        out += str[i].toUpperCase();
+      }
+    }
+    return out;
+  }
+  var __jamoQ = __isJamoOnly(ql) ? ql : '';
+
   // 1) Local (offline) search: localDB (KRX merged + any built-ins) — scored ranking
   var results=[];
   try{
@@ -1807,6 +1827,7 @@ async function runSearch(q,lid){
       if(!x) return null;
       var nm=String(x.name||'').toLowerCase();
       var cd=String(x.code||'').toLowerCase();
+      var cho = __jamoQ ? __getChosung(x.name||'').toLowerCase() : '';
       var tk=String(x.ticker||'').toLowerCase();
       var sec=String(x.sec||'').toLowerCase();
       var mkt=String(x.mkt||'').toLowerCase();
@@ -1821,6 +1842,8 @@ async function runSearch(q,lid){
       if(cd && cd.indexOf(qExact)===0) score += 95;
       if(tk && tk.indexOf(qExact)===0) score += 90;
       if(nm && nm.indexOf(ql)===0)     score += 85;
+      // Hangul initial-consonant match (e.g., 'ㄱㅂ' -> '경방')
+      if(__jamoQ && cho && cho.indexOf(__jamoQ)===0) score += 82;
 
       if(nm && nm.indexOf(ql)>-1)      score += 55;
       if(cd && cd.indexOf(qExact)>-1)  score += 50;
@@ -1828,8 +1851,9 @@ async function runSearch(q,lid){
       if(sec && sec.indexOf(ql)>-1)    score += 20;
       if(mkt && mkt.indexOf(ql)>-1)    score += 15;
 
-      // small boost for KR when Hangul query
-      if(/[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
+      // small boost for KR when Hangul query (only if there is any actual match)
+      // NOTE: avoid returning unrelated full lists for single-consonant queries (e.g., 'ㄴ').
+      if(score>0 && /[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
 
       return score>0 ? {x:x,score:score} : null;
     }).filter(Boolean).sort(function(a,b){
@@ -1929,7 +1953,7 @@ function pickStock(it,srcList){
   if(ex){document.getElementById(srcList).className='hac';
     if(srcList==='homeAcList'){document.getElementById('homeSearch').value=''; goToStock(ex.id);}
     else{document.getElementById('msrch').value=''; closeModal();}goToStock(ex.id);return;}
-  var s={id:window.__ASSET_VER__,name:it.name,code:it.code,mkt:it.mkt||'',ticker:ticker,tv:tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};
+  var s={id:Date.now(),name:it.name,code:it.code,mkt:it.mkt||'',ticker:ticker,tv:tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};
   stocks.unshift(s);sv();
   document.getElementById(srcList).className='hac';
   if(srcList==='homeAcList')document.getElementById('homeSearch').value='';
@@ -3197,7 +3221,7 @@ async function renderRel(s){
     });
   });
 }
-function addRel(r){if(typeof r==='string')r=JSON.parse(r);var ex=stocks.find(function(s){return s.code===r.code;});if(ex){alert(r.name+' 은 이미 추가되어 있습니다.');goToStock(ex.id);return;}var s={id:window.__ASSET_VER__,name:r.name,code:r.code,mkt:r.mkt||'',ticker:r.ticker,tv:r.tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};stocks.unshift(s);sv();cid=s.id;renderList();renderDetail();rfPrice(s.id);}
+function addRel(r){if(typeof r==='string')r=JSON.parse(r);var ex=stocks.find(function(s){return s.code===r.code;});if(ex){alert(r.name+' 은 이미 추가되어 있습니다.');goToStock(ex.id);return;}var s={id:Date.now(),name:r.name,code:r.code,mkt:r.mkt||'',ticker:r.ticker,tv:r.tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};stocks.unshift(s);sv();cid=s.id;renderList();renderDetail();rfPrice(s.id);}
 
 // ══════════════════════════════════════════
 // NOTE LIST & DETAIL
@@ -3843,6 +3867,26 @@ document.addEventListener('DOMContentLoaded', function(){
   var ql=qRaw.toLowerCase().trim();
   if(!ql){ac.className='hac';return;}
 
+  // Hangul initial-consonant (초성) matching helpers
+  // - Supports queries like 'ㄴ', 'ㅅㅇ', etc.
+  function __isJamoOnly(s){ return /^[ㄱ-ㅎ]+$/.test(s); }
+  var __CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  function __getChosung(str){
+    str = String(str||'');
+    var out='';
+    for(var i=0;i<str.length;i++){
+      var c=str.charCodeAt(i);
+      if(c>=0xAC00 && c<=0xD7A3){
+        var idx=Math.floor((c-0xAC00)/588);
+        out += __CHO[idx] || '';
+      }else if(/[A-Za-z0-9]/.test(str[i])){
+        out += str[i].toUpperCase();
+      }
+    }
+    return out;
+  }
+  var __jamoQ = __isJamoOnly(ql) ? ql : '';
+
   // 1) Local (offline) search: localDB (KRX merged + any built-ins) — scored ranking
   var results=[];
   try{
@@ -3865,6 +3909,8 @@ document.addEventListener('DOMContentLoaded', function(){
       if(cd && cd.indexOf(qExact)===0) score += 95;
       if(tk && tk.indexOf(qExact)===0) score += 90;
       if(nm && nm.indexOf(ql)===0)     score += 85;
+      // Hangul initial-consonant match (e.g., 'ㄱㅂ' -> '경방')
+      if(__jamoQ && cho && cho.indexOf(__jamoQ)===0) score += 82;
 
       if(nm && nm.indexOf(ql)>-1)      score += 55;
       if(cd && cd.indexOf(qExact)>-1)  score += 50;
@@ -3872,8 +3918,9 @@ document.addEventListener('DOMContentLoaded', function(){
       if(sec && sec.indexOf(ql)>-1)    score += 20;
       if(mkt && mkt.indexOf(ql)>-1)    score += 15;
 
-      // small boost for KR when Hangul query
-      if(/[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
+      // small boost for KR when Hangul query (only if there is any actual match)
+      // NOTE: avoid returning unrelated full lists for single-consonant queries (e.g., 'ㄴ').
+      if(score>0 && /[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
 
       return score>0 ? {x:x,score:score} : null;
     }).filter(Boolean).sort(function(a,b){
