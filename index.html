@@ -949,10 +949,8 @@ body[data-theme="light"] .tvmono{color:var(--text);}
 <div class="sind" id="sind"></div>
 
 <!-- Google API -->
-<script src="https://apis.google.com/js/api.js">
-<script src="https://accounts.google.com/gsi/client"></script>
-<script src="https://s3.tradingview.com/tv.js"></script>
-
+<script src="https://apis.google.com/js/api.js"></script>
+<script>
 // ---------- Network Guard (default OFF to avoid CORS/429) ----------
 window.NET = window.NET || { enabled:false, cooldownUntil:0, minIntervalMs:1500, lastCallAt:0, backoffMs:0 };
 window.netNow = window.netNow || function(){ return window.__ASSET_VER__; };
@@ -971,8 +969,9 @@ window.netBackoff = window.netBackoff || function(reason){
   try{ console.warn('NET backoff', window.NET.backoffMs, reason||''); }catch(e){}
 };
 window.netOk = window.netOk || function(){ window.NET.backoffMs=0; window.NET.cooldownUntil=0; };
-
 </script>
+<script src="https://accounts.google.com/gsi/client"></script>
+<script src="https://s3.tradingview.com/tv.js"></script>
 
 <script>
 function snGenId(){
@@ -993,10 +992,11 @@ function snFixDuplicateIds(list){
   });
 
   if(changed){
-    try{ localStorage.setItem('snv5', JSON.stringify(list)); }catch(e){}
+    localStorage.setItem('snv5', JSON.stringify(list));
   }
 }
 </script>
+
 
 <script>
 // ══════════════════════════════════════════
