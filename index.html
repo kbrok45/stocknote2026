@@ -6,118 +6,11 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <script>
-
-// --- v180: TradingView mini widget (KR display-only) ---
-function tvKrSymbol(code){
-  code = String(code||'').trim();
-  return 'KRX:' + code;
-}
-function mountTvMini(el, symbol, isLight){
-  try{
-    if(!el || !symbol) return;
-    el.innerHTML = '';
-    el.setAttribute('data-mounted','1');
-    var s = document.createElement('script');
-    s.type = 'text/javascript';
-    s.async = true;
-    s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js';
-    var cfg = {
-      symbol: symbol,
-      width: "100%",
-      height: "96",
-      locale: "kr",
-      dateRange: "1D",
-      colorTheme: isLight ? "light" : "dark",
-      isTransparent: true,
-      autosize: false,
-      largeChartUrl: "",
-      chartOnly: false,
-      noTimeScale: false
-    };
-    s.text = JSON.stringify(cfg);
-    el.appendChild(s);
-
-    setTimeout(function(){
-      try{
-        if(!el.querySelector('iframe') && !el.querySelector('div[class*="tradingview"]')){
-          el.innerHTML = '<div class="tvmini-fallback">위젯 표시가 제한될 수 있다. <a href="https://kr.tradingview.com/symbols/'+encodeURIComponent(symbol.replace(':','-'))+'/" target="_blank" rel="noopener noreferrer">새 탭에서 보기</a></div>';
-        }
-      }catch(e){}
-    }, 3500);
-  }catch(e){
-    try{ el.innerHTML = '<div class="tvmini-fallback">위젯 로딩 실패</div>'; }catch(_){}
-  }
-}
-function mountHomeTvMinis(){
-  try{
-    var isLight = !document.body.classList.contains('dark');
-    var nodes = document.querySelectorAll('.home-card[data-kr="1"] .tvmini');
-    nodes.forEach(function(n){
-      var code = n.getAttribute('data-code') || '';
-      if(!/^\d{6}$/.test(code)) return;
-      mountTvMini(n, tvKrSymbol(code), isLight);
-    });
-  }catch(e){}
-}
-
-
-// --- External chart deep links (KR) ---
-function buildKrLinks(code, name, extra){
-  code = String(code||'').trim();
-  name = String(name||'').trim();
-  extra = extra||{};
-  var q = encodeURIComponent(code || name);
-  // Investing direct URL (optional, from DB)
-  var inv = extra.investingUrl ? String(extra.investingUrl) : '';
-  if(inv && inv.indexOf('http')!==0) inv='';
-  return {
-    naver_main: 'https://finance.naver.com/item/main.naver?code=' + encodeURIComponent(code),
-    naver_chart: 'https://finance.naver.com/item/fchart.naver?code=' + encodeURIComponent(code),
-    alphasquare: extra.alphasquare || '',
-    tradingview: 'https://kr.tradingview.com/symbols/KRX-' + encodeURIComponent(code) + '/',
-    investing: inv || ('https://www.investing.com/search/?q=' + q),
-    google: 'https://www.google.com/search?q=' + encodeURIComponent((name||code) + ' 주가 차트'),
-    yahoo: 'https://finance.yahoo.com/quote/' + encodeURIComponent(extra.yahooTicker || '') 
-  };
-}
-function renderLinkPanel(containerEl, links, ctx){
-  if(!containerEl) return;
-  ctx = ctx||{};
-  // Buttons: open inside dashboard; fallback to new tab when blocked
-  var items = [
-    {k:'alphasquare', label:'AlphaSquare', url:links.alphasquare},
-    {k:'tradingview', label:'TradingView', url:links.tradingview},
-    {k:'investing', label:'Investing', url:links.investing},
-    {k:'naver_chart', label:'네이버(차트)', url:links.naver_chart},
-    {k:'naver_main', label:'네이버(요약)', url:links.naver_main},
-    {k:'google', label:'Google', url:links.google},
-    {k:'yahoo', label:'Yahoo', url:links.yahoo}
-  ].filter(x=>x.url);
-
-  var h = '<div class="linkpanel">';
-  for(var i=0;i<items.length;i++){
-    var it=items[i];
-    h += '<button type="button" class="lbtn" data-src="'+it.k+'" data-url="'+it.url+'">'+it.label+'</button>';
-  }
-  h += '</div>';
-  containerEl.innerHTML = h;
-
-  // Bind clicks (event delegation)
-  containerEl.onclick = function(ev){
-    var t = ev.target;
-    if(!t || !t.getAttribute) return;
-    var url = t.getAttribute('data-url');
-    var key = t.getAttribute('data-src');
-    if(!url) return;
-    openExternalDashboard(url, key, items);
-  };
-}
-
 /* Cache-buster for GitHub Pages:
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v180";
+window.APP_BUILD = "v165";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -130,77 +23,7 @@ window.__ASSET_VER__ = window.APP_BUILD;
       location.replace(url.toString());
     }
   }catch(e){}
-}
-// --- External dashboard open (best-effort embed) ---
-var __EXT_LAST_URL = '';
-function openExternalDashboard(url, key, items){
-  try{
-    var dash = document.getElementById('extDash');
-    var frame = document.getElementById('extDashFrame');
-    var tabs = document.getElementById('extDashTabs');
-    var st = document.getElementById('extDashStatus');
-    var blocked = document.getElementById('extDashBlocked');
-    var openBtn = document.getElementById('extDashOpenTabBtn');
-    var closeBtn = document.getElementById('extDashCloseBtn');
-    if(!dash||!frame||!tabs||!st||!blocked||!openBtn||!closeBtn) return;
-
-    dash.style.display = '';
-    __EXT_LAST_URL = url;
-    openBtn.onclick = function(){ if(__EXT_LAST_URL) window.open(__EXT_LAST_URL, '_blank', 'noopener'); };
-    closeBtn.onclick = function(){ dash.style.display='none'; frame.src='about:blank'; blocked.style.display='none'; st.textContent=''; };
-
-    // render tabs
-    if(items && items.length){
-      var th='';
-      for(var i=0;i<items.length;i++){
-        var it=items[i];
-        var active = (it.k===key)?' active':'';
-        th += '<div class="tab'+active+'" data-k="'+it.k+'" data-url="'+it.url+'">'+it.label+'</div>';
-      }
-      tabs.innerHTML = th;
-      tabs.onclick = function(ev){
-        var t=ev.target;
-        if(!t||!t.getAttribute) return;
-        var u=t.getAttribute('data-url');
-        var k=t.getAttribute('data-k');
-        if(!u) return;
-        openExternalDashboard(u, k, items);
-      };
-    }
-
-    // attempt embed with timeout-based block detection
-    blocked.style.display='none';
-    st.textContent = '불러오는 중… (일부 사이트는 보안정책으로 앱 안에 표시가 제한될 수 있다)';
-    var done = false;
-    var timer = setTimeout(function(){
-      if(done) return;
-      done = true;
-    }, 1);
-    clearTimeout(timer);
-
-    var t0 = Date.now();
-    var timed = false;
-    var to = setTimeout(function(){
-      if(done) return;
-      timed = true;
-      // likely blocked or slow; show message + open-in-tab
-      blocked.style.display='flex';
-      blocked.innerHTML = '<div><b>앱 안에 표시가 제한될 수 있다.</b><br>해당 사이트가 iframe 표시를 막는 경우다.<br><br><a class="lbtn" href="'+url+'" target="_blank" rel="noopener noreferrer">새 탭에서 열기</a></div>';
-      st.textContent = '표시 제한(차단) 의심 → 새 탭 열기를 권장한다.';
-    }, 2200);
-
-    frame.onload = function(){
-      if(done) return;
-      done = true;
-      clearTimeout(to);
-      // If it loads quickly, assume ok. Some sites load blank due to XFO; keep message minimal.
-      if(timed) return;
-      st.textContent = '표시 중';
-    };
-    frame.src = url;
-  }catch(e){}
-}
-)();
+})();
 </script>
 
 
@@ -429,7 +252,7 @@ function openExternalDashboard(url, key, items){
 <title>주식투자전략 노트</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;600&family=Bebas+Neue&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f1115;--sf:#151924;--sf2:#1b2030;--bd:#232a3a;--ac:#3fb9a6;--a2:#ff8a5c;--a3:#8b7cf6;--up:#d32f2f;--dn:#1976d2;--ne:#e0c35a;--tx:#e6e8ee;--tx2:#8b93a8;--tx3:#5e667b;}
+:root{--bg:#0f1115;--sf:#151924;--sf2:#1b2030;--bd:#232a3a;--ac:#3fb9a6;--a2:#ff8a5c;--a3:#8b7cf6;--up:#35c46a;--dn:#e15b64;--ne:#e0c35a;--tx:#e6e8ee;--tx2:#8b93a8;--tx3:#5e667b;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
 header{background:var(--sf);border-bottom:1px solid var(--bd);padding:0 18px;display:flex;align-items:center;justify-content:space-between;height:54px;position:sticky;top:0;z-index:300;overflow:visible;}
@@ -714,8 +537,8 @@ code{font-family:'JetBrains Mono',monospace;background:rgba(255,255,255,.07);pad
   --ac:#2563eb;
   --a2:#d97706;
   --a3:#4f46e5;
-  --up:#d32f2f;
-  --dn:#1976d2;
+  --up:#16a34a;
+  --dn:#dc2626;
   --ne:#ca8a04;
   --tx:#1f2937;
   --tx2:#6b7280;
@@ -740,8 +563,8 @@ body[data-theme="light"]{
   --ac:#0f766e;
   --a2: var(--a2);
   --a3: var(--a3);
-  --up:#d32f2f;
-  --dn:#1976d2;
+  --up: var(--up);
+  --dn: var(--dn);
   --tx: var(--text);
   --tx2: var(--muted);
   --tx3: #64748b;
@@ -754,8 +577,8 @@ body[data-theme="light"]{
   --shadow:0 10px 28px rgba(2,6,23,.10);
   --chip:rgba(37,99,235,.10);
   --chip2:rgba(2,132,199,.10);
-  --up:#d32f2f;
-  --dn:#1976d2;
+  --up:#0f766e;
+  --dn:#b91c1c;
   --a1:#1d4ed8;
   --a2:#0ea5e9;
   --a3:#4f46e5;
@@ -787,8 +610,8 @@ body[data-theme="dark"]{
   --ac:#3fb9a6;
   --a2:#ff8a5c;
   --a3:#8b7cf6;
-  --up:#d32f2f;
-  --dn:#1976d2;
+  --up:#35c46a;
+  --dn:#e15b64;
   --ne:#e0c35a;
   --tx:#e6e8ee;
   --tx2:#9ca3af;
@@ -829,49 +652,6 @@ body[data-theme="light"] .tvbtn:hover{background:rgba(15,23,42,.08);}
 body[data-theme="light"] .tvbtn.active{background:rgba(37,99,235,.12); border-color:rgba(37,99,235,.28); color:var(--a1);}
 body[data-theme="light"] .tvsel{background:rgba(15,23,42,.04); color:var(--text); border:1px solid rgba(15,23,42,.10);}
 body[data-theme="light"] .tvmono{color:var(--text);}
-
-
-/* v166 mobile UX tweaks (safe, no logic changes) */
-@media (max-width: 820px){
-  .btn, button, .krTab, .chip{ min-height: 40px; }
-  #tvc .extlk{ padding: 8px 10px; }
-  .tvframe iframe{ min-height: 52vh; }
-}
-body{ padding-bottom: env(safe-area-inset-bottom); }
-
-/* --- v172 link panel --- */
-.linkpanel{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.linkpanel .lbtn{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;border-radius:10px;border:1px solid rgba(127,127,127,.35);text-decoration:none;font-size:13px;line-height:1}
-body.dark .linkpanel .lbtn{border-color:rgba(200,200,200,.25)}
-
-
-/* --- v173 external dashboard --- */
-.extdash{margin-top:12px;border:1px solid rgba(127,127,127,.25);border-radius:14px;overflow:hidden}
-.extdash-head{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(127,127,127,.08)}
-.extdash-title{font-weight:700;font-size:13px;white-space:nowrap}
-.extdash-status{font-size:12px;opacity:.85;flex:1;min-height:16px}
-.extdash-actions{display:flex;gap:8px}
-.extdash-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;border-top:1px solid rgba(127,127,127,.15);background:rgba(127,127,127,.04)}
-.extdash-tabs .tab{padding:7px 10px;border-radius:999px;border:1px solid rgba(127,127,127,.25);font-size:12px;cursor:pointer;user-select:none}
-.extdash-tabs .tab.active{font-weight:700}
-.extdash-body{position:relative;height:420px}
-.extdash-body iframe{width:100%;height:100%;border:0;background:transparent}
-.extdash-blocked{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;text-align:center;font-size:13px;line-height:1.45;background:rgba(0,0,0,.03)}
-body.dark .extdash{border-color:rgba(200,200,200,.20)}
-body.dark .extdash-head{background:rgba(255,255,255,.06)}
-body.dark .extdash-tabs{background:rgba(255,255,255,.04)}
-body.dark .extdash-blocked{background:rgba(255,255,255,.04)}
-
-
-/* --- v180: KR home cards use TradingView mini widget only (no numeric fetch) --- */
-.home-card[data-kr="1"] .price,
-.home-card[data-kr="1"] .price-change,
-.home-card[data-kr="1"] .spark {
-  display:none !important;
-}
-.tvmini{margin-top:8px;border-radius:12px;overflow:hidden;border:1px solid rgba(127,127,127,.18)}
-.tvmini .tvmini-fallback{padding:10px;font-size:12px;opacity:.85}
-body.dark .tvmini{border-color:rgba(200,200,200,.18)}
 
 </style>
 
@@ -1263,7 +1043,7 @@ var CLIENT_ID = localStorage.getItem('snv5_clientId') || '';
 var DRIVE_FNAME = '주식투자전략노트_data.json';
 
 if (!stocks.length) {
-  var t = Date.now();
+  var t=window.__ASSET_VER__;
   stocks=[
     {id:t+1,name:'삼성전자',code:'005930',mkt:'KOSPI',ticker:'005930.KS',tv:'KRX:005930',price:'',chg:'',trend:'up',sig:'buy',tgt:'78,000',sl:'73,500',cn:'120일 이평선 지지. MACD 골든크로스.',bt:'75,000원 이하 분할매수',st:'78,000 → 80,000 단계 매도',ol:'HBM 수주 확대, 하반기 실적 개선',sy:'분할매수 1차70%/2차30%',risk:'2',bp:'75000',sh:'100',memo:'AI 반도체 수혜주',sec:'반도체',upd:new Date().toISOString()},
     {id:t+2,name:'SK하이닉스',code:'000660',mkt:'KOSPI',ticker:'000660.KS',tv:'KRX:000660',price:'',chg:'',trend:'up',sig:'buy',tgt:'200,000',sl:'181,000',cn:'신고가 후 눌림',bt:'185,000 눌림 매수',st:'200,000 목표',ol:'HBM3E 양산',sy:'모멘텀 단기매매',risk:'3',bp:'187000',sh:'30',memo:'변동성 주의',sec:'반도체',upd:new Date().toISOString()},
@@ -1282,7 +1062,7 @@ function sv() {
     svt = setTimeout(function(){ saveToDrive(); }, 3000);
   }
 }
-function gbi(id){ return stocks.find(function(s){return String(s.id)===String(id);}); }
+function gbi(id){ return stocks.find(function(s){return s.id===id;}); }
 
 // ══════════════════════════════════════════
 
@@ -1769,6 +1549,7 @@ function showPage(p) {
     document.getElementById('pgHome').classList.add('active');
     document.getElementById('navHome').classList.add('active');
     renderHome();
+    snUpdateHomePricesKR();
   } else {
     document.getElementById('pgNote').classList.add('active');
     document.getElementById('navNote').classList.add('active');
@@ -1794,10 +1575,7 @@ setInterval(tick,1000); tick();
 // ══════════════════════════════════════════
 function renderHome() {
   renderPortSummary(); renderQuickGrid(); renderSigRows(); renderRecentList();
-  // v180: mount KR widgets after render
-  try{ setTimeout(mountHomeTvMinis,0); }catch(e){}
 }
-
 function renderPortSummary() {
   document.getElementById('ps-total').textContent=stocks.length;
   document.getElementById('ps-buy').textContent=stocks.filter(function(s){return s.sig==='buy'||s.sig==='hold';}).length;
@@ -1819,7 +1597,7 @@ function renderQuickGrid() {
     var tc2=s.trend==='up'?'tu':s.trend==='down'?'td':'tn';
     var ti=s.trend==='up'?'▲':s.trend==='down'?'▼':'━';
     var sigTag={buy:'<span class="tag tb">매수</span>',sell:'<span class="tag ts2">매도</span>',hold:'<span class="tag th">보유</span>',watch:'<span class="tag tw">관심</span>'}[s.sig]||'';
-    return '<div class="qcard '+tc2+' '+(selectedIds.has(String(s.id))?'selected':'')+'" onclick="onStockCardClick(\''+s.id+'\')"><div class="qsig">'+sigTag+'</div>'+
+    return '<div class="qcard '+tc2+' '+(selectedIds.has(String(s.id))?'selected':'')+'" onclick="onStockCardClick(' + s.id + ')"><div class="qsig">'+sigTag+'</div>'+
       (selectionMode?'<input class="selbox" type="checkbox" onclick="event.stopPropagation();toggleSelected(\\\''+s.id+'\\\')" '+(selectedIds.has(String(s.id))?'checked':'')+'>':'')+
       '<div class="qname">'+s.name+'</div><div class="qcode">'+s.code+(s.mkt?' · '+s.mkt:'')+'</div><div class="qprice '+pc+'">'+(s.price||'---')+'</div><div class="qchg '+pc+'">'+ti+' '+(s.chg||'')+'</div></div>';
   }).join('');
@@ -1846,21 +1624,7 @@ function renderRecentList() {
   }).join('');
 }
 function relT(d){var n=new Date(),diff=Math.floor((n-d)/1000);if(diff<60)return'방금';if(diff<3600)return Math.floor(diff/60)+'분 전';if(diff<86400)return Math.floor(diff/3600)+'시간 전';return Math.floor(diff/86400)+'일 전';}
-function goToStock(id){
-  // normalize id to string to avoid multi-active glitches when ids come from Drive/stringified values
-  cid = String(id);
-  // leaving any multi-select state behind when navigating from Home -> Note
-  try{ selectionMode=false; selectedIds && selectedIds.clear && selectedIds.clear(); }catch(e){}
-  showPage('note');
-  renderList();
-  renderDetail();
-  var s=gbi(cid);
-  if(s){
-    rfPrice(cid);
-    clearInterval(prt);
-    prt=setInterval(function(){ rfPrice(cid); },30000);
-  }
-}
+function goToStock(id){cid=id;showPage('note');renderList();renderDetail();var s=gbi(id);if(s){rfPrice(id);clearInterval(prt);prt=setInterval(function(){rfPrice(cid);},30000);}}
 
 // ══════════════════════════════════════════
 // SEARCH
@@ -2028,26 +1792,6 @@ async function runSearch(q,lid){
   var ql=qRaw.toLowerCase().trim();
   if(!ql){ac.className='hac';return;}
 
-
-  // Hangul initial-consonant (초성) matching helpers
-  // - Supports queries like 'ㄴ', 'ㅅㅇ' (jamo-only)
-  function __isJamoOnly(s){ return /^[ㄱ-ㅎ]+$/.test(s); }
-  var __CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-  function __getChosung(str){
-    str = String(str||'');
-    var out='';
-    for(var i=0;i<str.length;i++){
-      var c=str.charCodeAt(i);
-      if(c>=0xAC00 && c<=0xD7A3){
-        var idx=Math.floor((c-0xAC00)/588);
-        out += __CHO[idx] || '';
-      }
-    }
-    return out.toLowerCase();
-  }
-  var __jamoQ = __isJamoOnly(ql) ? ql : '';
-
-
   // 1) Local (offline) search: localDB (KRX merged + any built-ins) — scored ranking
   var results=[];
   try{
@@ -2056,7 +1800,6 @@ async function runSearch(q,lid){
       if(!x) return null;
       var nm=String(x.name||'').toLowerCase();
       var cd=String(x.code||'').toLowerCase();
-      var cho = __jamoQ ? __getChosung(x.name||'') : '';
       var tk=String(x.ticker||'').toLowerCase();
       var sec=String(x.sec||'').toLowerCase();
       var mkt=String(x.mkt||'').toLowerCase();
@@ -2066,13 +1809,6 @@ async function runSearch(q,lid){
       if(cd && cd===qExact) score += 120;
       if(tk && tk===qExact) score += 115;
       if(nm && nm===ql)     score += 110;
-
-      // jamo-only query: match by Hangul initial consonants (초성)
-      if(__jamoQ){
-        if(cho && cho===__jamoQ) score += 105;
-        if(cho && cho.indexOf(__jamoQ)===0) score += 90;
-        if(cho && cho.indexOf(__jamoQ)>-1) score += 65;
-      }
 
       // prefix / contains
       if(cd && cd.indexOf(qExact)===0) score += 95;
@@ -2085,8 +1821,8 @@ async function runSearch(q,lid){
       if(sec && sec.indexOf(ql)>-1)    score += 20;
       if(mkt && mkt.indexOf(ql)>-1)    score += 15;
 
-      // small boost for KR when Hangul query (only when there is an actual match)
-      if(score>0 && /[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
+      // small boost for KR when Hangul query
+      if(/[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
 
       return score>0 ? {x:x,score:score} : null;
     }).filter(Boolean).sort(function(a,b){
@@ -2219,59 +1955,7 @@ document.getElementById('modal').addEventListener('click',function(e){if(e.targe
 async function fetchNaver(code){
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return null;
   if(typeof window.netMarkCall==='function') window.netMarkCall();
-  code = String(code||'').trim();
-  try{
-    // 1) Naver polling realtime (freshest; may allow CORS)
-    var u1='https://polling.finance.naver.com/api/realtime/domestic/stock/'+encodeURIComponent(code);
-    var r1=await fetch(u1+'?_='+Date.now(), {cache:'no-store', signal:AbortSignal.timeout(4500)});
-    if(r1.ok){
-      var j1=await r1.json();
-      var x = (j1 && j1.datas && j1.datas[0]) ? j1.datas[0]
-            : (j1 && j1.data) ? j1.data
-            : j1;
-      if(x){
-        var price = x.closePrice ?? x.now ?? x.price ?? x.nv ?? x.currentPrice;
-        var chg   = x.compareToPreviousClosePrice ?? x.change ?? x.fluctuations ?? x.fluctuationsValue;
-        var rate  = x.fluctuationsRatio ?? x.rate ?? x.changeRate ?? x.pct;
-        if(price!=null){
-          price=parseFloat(String(price).replace(/,/g,''));
-          var amt=parseFloat(String(chg||0).replace(/,/g,'').replace(/[^0-9.-]/g,''));
-          var pct=parseFloat(String(rate||0).replace(/[^0-9.-]/g,''));
-          if(!isNaN(price)) return {price:price, amt:amt, pct:pct, cur:'KRW', src:'naver-polling'};
-        }
-      }
-    }
-  }catch(e1){}
-  try{
-    // 2) Mobile stock API direct (may be blocked by CORS on some browsers)
-    var u2='https://m.stock.naver.com/api/stock/'+encodeURIComponent(code)+'/basic';
-    var r2=await fetch(u2+'?_='+Date.now(), {cache:'no-store', signal:AbortSignal.timeout(4500)});
-    if(r2.ok){
-      var p=await r2.json();
-      if(p && p.currentPrice){
-        var price=parseFloat(String(p.currentPrice).replace(/,/g,''));
-        var amt=parseFloat(String(p.fluctuationsValue||0).replace(/,/g,'').replace(/[^0-9.-]/g,''));
-        var pct=parseFloat(String(p.fluctuationsRatio||0).replace(/[^0-9.-]/g,''));
-        if(!isNaN(price)) return {price:price,amt:amt,pct:pct,cur:'KRW',src:'naver-m'};
-      }
-    }
-  }catch(e2){}
-  try{
-    // 3) AllOrigins fallback (CORS-safe but may be cached/delayed)
-    var u='https://m.stock.naver.com/api/stock/'+encodeURIComponent(code)+'/basic';
-    var r=await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(u+'?_='+Date.now()),{cache:'no-store',signal:AbortSignal.timeout(7000)});
-    if(!r.ok)return null;
-    var d=await r.json();
-    var p=JSON.parse(d.contents);
-    if(!p||!p.currentPrice)return null;
-    var price=parseFloat(String(p.currentPrice).replace(/,/g,''));
-    var amt=parseFloat(String(p.fluctuationsValue||0).replace(/,/g,'').replace(/[^0-9.-]/g,''));
-    var pct=parseFloat(String(p.fluctuationsRatio||0).replace(/[^0-9.-]/g,''));
-    if(!isNaN(price)) return{price:price,amt:amt,pct:pct,cur:'KRW',src:'naver-proxy'};
-    return null;
-  }catch(e3){return null;}
-}
-
+try{var u='https://m.stock.naver.com/api/stock/'+code+'/basic';var r=await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(u),{signal:AbortSignal.timeout(7000)});if(!r.ok)return null;var d=await r.json();var p=JSON.parse(d.contents);if(!p||!p.currentPrice)return null;var price=parseFloat(String(p.currentPrice).replace(/,/g,''));var amt=parseFloat(String(p.fluctuationsValue||0).replace(/,/g,'').replace(/[^0-9.-]/g,''));var pct=parseFloat(String(p.fluctuationsRatio||0).replace(/[^0-9.-]/g,''));return{price:price,amt:amt,pct:pct,cur:'KRW',src:'naver'};}catch(e){return null;}}
 async function fetchYahoo(ticker){
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return null;
   if(typeof window.netMarkCall==='function') window.netMarkCall();
@@ -2366,11 +2050,8 @@ async function rfPrice(id,silent){
   var s=gbi(id);if(!s)return;
   if(!silent&&id===cid){var lp=document.getElementById('liveP');if(lp)lp.innerHTML='<span class="spin">↻</span>';}
   var isKR=/^\d{6}$/.test(s.code);
-  // v180: no numeric fetch for KR on Home (use TradingView widget). Avoid CORS spam.
-  if(isKR){ return; }
-  var data=null;
-  // Do NOT fallback to Yahoo for KR tickers (often stale/mis-mapped).
-  if(!isKR && !data && s.ticker) data = await fetchYahoo(s.ticker);
+  var data=isKR?await fetchNaver(s.code):null;
+  if(!data&&s.ticker)data=await fetchYahoo(s.ticker);
   if(!data){if(!silent&&id===cid){var lp2=document.getElementById('liveP');if(lp2&&lp2.querySelector('.spin'))lp2.textContent=s.price||'오류';}return;}
   var sign=data.pct>=0?'+':'-';
   s.price=fp(data.price,data.cur);s.chg=sign+fp(Math.abs(data.amt),data.cur)+' ('+sign+Math.abs(data.pct).toFixed(2)+'%)';
@@ -2506,7 +2187,6 @@ function loadTV(sym, iv) {
   // 외부 링크
   var tvSym = isKR ? ('KRX:' + code)
                    : (sym.indexOf(':') > -1 ? sym : 'NASDAQ:' + sym.toUpperCase());
-  __lastTvSym = tvSym;
   var tvUrl    = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(tvSym);
 
   var naverUrl = isKR ? ('https://finance.naver.com/item/main.nhn?code=' + code) : '';
@@ -3526,22 +3206,12 @@ function renderList(){
     var tl={buy:'매수',sell:'매도',hold:'보유',watch:'관심'}[s.sig]||'관심';
     var pc=s.trend==='up'?'cu':s.trend==='down'?'cd':'cn';var ti=s.trend==='up'?'▲':s.trend==='down'?'▼':'━';
     var tc2=s.trend==='up'?'tu':s.trend==='down'?'td':'tn';
-    div.className='scard '+tc2+(String(s.id)===String(cid)?' active':'');div.onclick=function(){ if(selectionMode){ toggleSelected(s.id); return; } selectS(s.id); };
+    div.className='scard '+tc2+(s.id===cid?' active':'');div.onclick=function(){ if(selectionMode){ toggleSelected(s.id); return; } selectS(s.id); };
     div.innerHTML=selHtml+'<div class="scrow"><div><div class="scname">'+s.name+'</div><div class="sccode">'+s.code+(s.mkt?' · '+s.mkt:'')+'</div></div><div style="text-align:right"><div class="scprice '+pc+'">'+(s.price||'---')+'</div><div style="font-size:10px" class="'+pc+'">'+ti+' '+(s.chg||'')+'</div></div></div><div class="scbot"><span class="tag '+tc+'">'+tl+'</span>'+(s.tgt?'<span class="tag" style="background:rgba(0,212,170,.1);color:var(--ac);font-size:9px">목표 '+s.tgt+'</span>':'')+(s.sl?'<span class="tag" style="background:rgba(255,71,87,.1);color:var(--dn);font-size:9px">손절 '+s.sl+'</span>':'')+'</div>';
     list.appendChild(div);
   });
 }
-function selectS(id){
-  cid = String(id);
-  clearInterval(prt);
-  renderList();
-  renderDetail();
-  var s=gbi(cid);
-  if(s){
-    rfPrice(cid);
-    prt=setInterval(function(){ rfPrice(cid); },30000);
-  }
-}
+function selectS(id){cid=id;clearInterval(prt);renderList();renderDetail();var s=gbi(id);if(s){rfPrice(id);prt=setInterval(function(){rfPrice(cid);},30000);}}
 function renderDetail(){
   var s=gbi(cid);if(!s)return;
   document.getElementById('empty').style.display='none';
@@ -3747,7 +3417,6 @@ body[data-theme="light"] .itab.active{color:#fff;}
       code = String(code||'').replace(/\D/g,'').padStart(6,'0');
       var wrap = document.getElementById('lwc_wrap');
       if(!wrap) return;
-      var isLight = (document.body.getAttribute('data-theme')==='light');
 
       // Inject minimal CSS once (light/dark friendly)
       if(!document.getElementById('kr_embed_css')){
@@ -3768,17 +3437,7 @@ body[data-theme="light"] .itab.active{color:#fff;}
         + '.krBtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}'
         + '.krBtn{appearance:none;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;}'
         + '.krLinks{display:flex;gap:8px;flex-wrap:wrap;}'
-        + '.krLinks a{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);text-decoration:none;font-size:12px;}'
-        + '.krStatus{display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 10px;border-radius:12px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:12px;}'
-        + '.krStatus .spin{width:14px;height:14px;border-radius:999px;border:2px solid var(--border);border-top-color:var(--text);animation:krspin 0.9s linear infinite;display:none;}'
-        + '.krStatus.loading .spin{display:inline-block;}'
-        + '@keyframes krspin{to{transform:rotate(360deg);}}'
-        + '.krFrameWrap{position:relative;}'
-        + '.krOverlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.12);backdrop-filter:blur(2px);}'
-        + '.krOverlay.show{display:flex;}'
-        + '.krOverlay .box{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:12px;}'
-        + '.krOverlay .box .spin{width:16px;height:16px;border-radius:999px;border:2px solid var(--border);border-top-color:var(--text);animation:krspin 0.9s linear infinite;}'
-        ;
+        + '.krLinks a{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);text-decoration:none;font-size:12px;}';
         document.head.appendChild(st);
       }
 
@@ -3787,14 +3446,6 @@ body[data-theme="light"] .itab.active{color:#fff;}
       var dart   = 'https://dart.fss.or.kr/dsab001/main.do?autoSearch=true&textCrpNm=' + encodeURIComponent(code);
       var invKR  = 'https://kr.investing.com/search/?q=' + encodeURIComponent(code);
       var tvTab  = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent('KRX:'+code);
-      var tvEmbed = 'https://s.tradingview.com/widgetembed/?frameElementId=tradingview'
-        + '&symbol=' + encodeURIComponent('KRX:'+code)
-        + '&interval=' + encodeURIComponent('D')
-        + '&hidetoptoolbar=0&hidesidetoolbar=0&symboledit=1&saveimage=0'
-        + '&toolbarbg=' + (isLight?'%23ffffff':'%23111317')
-        + '&studies=' + encodeURIComponent('')
-        + '&theme=' + (isLight?'light':'dark') + '&style=1&timezone=Asia%2FSeoul&withdateranges=1'
-        + '&hideideas=1&studies_overrides=%7B%7D&overrides=%7B%7D';
 
       // AlphaSquare iframe (works only if AlphaSquare allows embedding)
       var alphaUrl = 'https://alphasquare.co.kr/home/stock/stock-summary?code='
@@ -3806,195 +3457,75 @@ body[data-theme="light"] .itab.active{color:#fff;}
       +   '<div class="krEmbedTop">'
       +     '<div class="krTabs">'
       +       '<button type="button" class="krTab active" id="krTabAlpha">AlphaSquare</button>'
-      +       '<button type="button" class="krTab" id="krTabTV">TradingView</button>'
       +       '<button type="button" class="krTab" id="krTabLinks">링크</button>'
       +     '</div>'
       +     '<div class="krMsg"><b>국내('+code+')</b> 차트는 <span style="color:var(--muted);">AlphaSquare iframe</span>을 우선 시도한다. (사이트 정책으로 차단되면 자동으로 링크 모드로 전환)</div>'
-      +     '<div class="krStatus loading" id="krChartStatus"><div class="spin"></div><div id="krStatusText">AlphaSquare 로딩 중…</div></div>'
       +   '</div>'
       +   '<div class="krFrameWrap" id="krAlphaWrap">'
       +     '<iframe id="krAlphaIfr" src="'+alphaUrl+'" allowfullscreen></iframe>'
-      +     '<div class="krOverlay show" id="krAlphaOverlay"><div class="box"><div class="spin"></div><div id="krAlphaOverlayText">AlphaSquare 로딩 중…</div></div></div>'
       +     '<div class="krBlock" id="krAlphaBlock" style="display:none;">'
       +       '<b>AlphaSquare 임베드가 차단된 듯하다.</b>'
       +       '<div class="krMsg">GitHub Pages/브라우저에서 일부 사이트는 iframe 삽입을 허용하지 않는다.</div>'
       +       '<div class="krBtns">'
       +         '<button type="button" class="krBtn" id="krBtnLinks">링크 모드로 보기</button>'
-      +         '<button type="button" class="krBtn" id="krBtnRetry">AlphaSquare 다시 시도</button>'
-      +         '<a class="krBtn" href="'+alphaUrl+'" target="_blank" rel="noopener">AlphaSquare(새창)</a>'
-      +         '<a class="krBtn" href="'+tvTab+'" target="_blank" rel="noopener">TradingView(새창)</a>'
-      +         '<a class="krBtn" href="'+nChart+'" target="_blank" rel="noopener">네이버 차트(새창)</a>'
+      +         '<a class="krBtn" href="'+nMain+'" target="_blank" rel="noopener">AlphaSquare 대신 네이버 열기</a>'
       +       '</div>'
       +     '</div>'
       +   '</div>'
-      +   '<div class="krFrameWrap" id="krTvWrap" style="display:none;">'
-      +     '<iframe id="krTvIfr" src="'+tvEmbed+'" allowfullscreen></iframe>'
-      +     '<div class="krOverlay show" id="krTvOverlay"><div class="box"><div class="spin"></div><div id="krTvOverlayText">TradingView 로딩 중…</div></div></div>'
-      +   '</div>'
       +   '<div class="krLinks" id="krLinks" style="display:none;">'
-      +     '<a target="_blank" rel="noopener" href="'+nMain+'">↗ 네이버(요약)</a>'
+      +     '<a target="_blank" rel="noopener" href="'+nMain+'">↗ 네이버(요약/실시간)</a>'
       +     '<a target="_blank" rel="noopener" href="'+nChart+'">↗ 네이버(차트)</a>'
-      +     '<a target="_blank" rel="noopener" href="'+alphaUrl+'">↗ AlphaSquare</a>'
-      +     '<a target="_blank" rel="noopener" href="'+tvTab+'">↗ TradingView</a>'
       +     '<a target="_blank" rel="noopener" href="'+invKR+'">↗ Investing(검색)</a>'
+      +     '<a target="_blank" rel="noopener" href="'+tvTab+'">↗ TradingView</a>'
       +     '<a target="_blank" rel="noopener" href="'+dart+'">↗ DART</a>'
       +   '</div>'
       + '</div>';
 
       // Tabs logic
-      var loadedAlpha = false, loadedTV = false;
-      // status & overlays
-      var stBar = document.getElementById('krChartStatus');
-      var stTxt = document.getElementById('krStatusText');
-      var ovA = document.getElementById('krAlphaOverlay');
-      var ovATxt = document.getElementById('krAlphaOverlayText');
-      var ovT = document.getElementById('krTvOverlay');
-      var ovTTxt = document.getElementById('krTvOverlayText');
-      function setStatus(kind, text){
-        try{
-          if(stTxt) stTxt.textContent = text || '';
-          if(stBar){
-            stBar.classList.toggle('loading', kind==='loading');
-          }
-        }catch(e){}
-      }
-      function showOv(which, show, text){
-        try{
-          if(which==='a' && ovA){
-            ovA.classList.toggle('show', !!show);
-            if(ovATxt && text) ovATxt.textContent = text;
-          }
-          if(which==='t' && ovT){
-            ovT.classList.toggle('show', !!show);
-            if(ovTTxt && text) ovTTxt.textContent = text;
-          }
-        }catch(e){}
-      }
-
-      // Persist previous embed failure
+      var loaded = false;
+      // Persist previous embed failure to avoid repeated blank iframes
       var asBlocked = false;
       try{ asBlocked = (localStorage.getItem('sn_as_iframe_blocked')==='1'); }catch(e){}
-      var ifrA = document.getElementById('krAlphaIfr');
-      var ifrT = document.getElementById('krTvIfr');
+      if(asBlocked){
+        // start in links mode
+        setTimeout(function(){ setActive(false); }, 0);
+      }
+      var ifr = document.getElementById('krAlphaIfr');
+      if(asBlocked && ifr){ try{ ifr.src='about:blank'; }catch(e){} }
       var blk = document.getElementById('krAlphaBlock');
-
       var tabA = document.getElementById('krTabAlpha');
-      var tabT = document.getElementById('krTabTV');
       var tabL = document.getElementById('krTabLinks');
-
       var links = document.getElementById('krLinks');
       var alphaWrap = document.getElementById('krAlphaWrap');
-      var tvWrap = document.getElementById('krTvWrap');
-
-      function setMode(mode){
-        // mode: 'alpha' | 'tv' | 'links'
-        if(tabA) tabA.classList.toggle('active', mode==='alpha');
-        if(tabT) tabT.classList.toggle('active', mode==='tv');
-        if(tabL) tabL.classList.toggle('active', mode==='links');
-        if(alphaWrap) alphaWrap.style.display = (mode==='alpha') ? 'block' : 'none';
-        if(tvWrap) tvWrap.style.display = (mode==='tv') ? 'block' : 'none';
-        if(links) links.style.display = (mode==='links') ? 'flex' : 'none';
+      function setActive(a){
+        if(tabA) tabA.classList.toggle('active', a===true);
+        if(tabL) tabL.classList.toggle('active', a===false);
+        if(alphaWrap) alphaWrap.style.display = a===true ? 'block' : 'none';
+        if(links) links.style.display = a===true ? 'none' : 'flex';
       }
-
-      if(tabA) tabA.addEventListener('click', function(){ setMode('alpha'); });
-      if(tabT) tabT.addEventListener('click', function(){ setMode('tv'); });
-      if(tabL) tabL.addEventListener('click', function(){ setMode('links'); });
+      if(tabA) tabA.addEventListener('click', function(){ setActive(true); });
+      if(tabL) tabL.addEventListener('click', function(){ setActive(false); });
 
       var btnLinks = document.getElementById('krBtnLinks');
-      if(btnLinks) btnLinks.addEventListener('click', function(){ setMode('links'); });
+      if(btnLinks) btnLinks.addEventListener('click', function(){ setActive(false); });
 
-      // initial state
-      showOv('a', true, 'AlphaSquare 로딩 중…');
-      showOv('t', false);
-      setStatus('loading', asBlocked ? 'AlphaSquare 차단 이력 → TradingView로 표시한다.' : 'AlphaSquare 로딩 중…');
-
-      if(asBlocked){
-        // start in TradingView mode
-        setMode('tv');
-        showOv('t', true, 'TradingView 로딩 중…');
-        try{ if(ifrA) ifrA.src='about:blank'; }catch(e){}
-      }else{
-        setMode('alpha');
-      }
-
-      if(ifrA){
-        ifrA.addEventListener('load', function(){
-          loadedAlpha = true;
-          showOv('a', false);
+      if(ifr){
+        ifr.addEventListener('load', function(){
+          loaded = true;
+          // hide warning block if loaded
           if(blk) blk.style.display = 'none';
-          setStatus('ok', 'AlphaSquare 로드됨');
-          // reset fail counters on success
-          try{
-            localStorage.removeItem('sn_as_fail_count');
-            localStorage.removeItem('sn_as_fail_ts');
-          }catch(e){}
-        });
-      }
-      if(ifrT){
-        ifrT.addEventListener('load', function(){
-          loadedTV = true;
-          showOv('t', false);
-          if(!loadedAlpha){
-            setStatus('ok', 'TradingView로 표시 중');
-          }
         });
       }
 
-      // High-confidence block/slow detection:
-      // - If Alpha iframe doesn't load within 10s, treat as "suspected blocked/slow" and show TradingView automatically.
-      // - Only persist "blocked" after 2 consecutive timeouts within 6 hours.
+      // If not loaded within 4s, show warning and switch to links to avoid "blank"
       setTimeout(function(){
-        if(!loadedAlpha && !asBlocked){
-          var now = Date.now();
-          var failCount = 0, lastTs = 0;
-          try{
-            failCount = parseInt(localStorage.getItem('sn_as_fail_count')||'0',10) || 0;
-            lastTs = parseInt(localStorage.getItem('sn_as_fail_ts')||'0',10) || 0;
-          }catch(e){}
-          if(!lastTs || (now - lastTs) > 6*60*60*1000) failCount = 0;
-          failCount += 1;
-          try{
-            localStorage.setItem('sn_as_fail_count', String(failCount));
-            localStorage.setItem('sn_as_fail_ts', String(now));
-          }catch(e){}
-          // show warning
+        if(!loaded){
+          try{ localStorage.setItem('sn_as_iframe_blocked','1'); }catch(e){}
           if(blk) blk.style.display = 'flex';
-          setStatus('loading', 'AlphaSquare 로딩 지연/차단 의심 → TradingView로 자동 대체한다.');
-          // auto switch to TradingView iframe
-          setMode('tv');
-          showOv('t', true, 'TradingView 로딩 중…');
-          // persist blocked only after repeated failures
-          if(failCount >= 2){
-            try{ localStorage.setItem('sn_as_iframe_blocked','1'); }catch(e){}
-          }
+          // 자동 전환: 사용자 경험상 바로 링크 모드가 낫다면 활성화
+          setActive(false);
         }
-      }, 10000);
-
-      // Retry AlphaSquare
-      var btnRetry = document.getElementById('krBtnRetry');
-      if(btnRetry) btnRetry.addEventListener('click', function(){
-        try{
-          localStorage.removeItem('sn_as_iframe_blocked');
-          localStorage.removeItem('sn_as_fail_count');
-          localStorage.removeItem('sn_as_fail_ts');
-        }catch(e){}
-        asBlocked = false;
-        loadedAlpha = false;
-        if(blk) blk.style.display = 'none';
-        setMode('alpha');
-        showOv('a', true, 'AlphaSquare 다시 시도 중…');
-        setStatus('loading', 'AlphaSquare 다시 시도 중…');
-        if(ifrA){
-          try{
-            var base = alphaUrl;
-            var sep = (base.indexOf('?')>-1) ? '&' : '?';
-            ifrA.src = base + sep + 't=' + Date.now();
-          }catch(e){}
-        }
-      });
-
-
-
+      }, 4000);
 
     }catch(e){
       try{
@@ -4258,37 +3789,31 @@ document.addEventListener('DOMContentLoaded', function(){
       var nt = norm(t);
       var nn = norm(n);
 
-      // tier (lower is better): keep prefix-first ordering
-      // 0 exact ticker, 1 ticker prefix, 2 name prefix, 3 ticker contains, 4 name contains
-      var tier = 99;
-      if(nt && nt===nq) tier = 0;
-      else if(nt && nt.indexOf(nq)===0) tier = 1;
-      else if(nn && nn.indexOf(nq)===0) tier = 2;
-      else if(nt && nt.indexOf(nq)>0) tier = 3;
-      else if(nn && nn.indexOf(nq)>0) tier = 4;
-      else continue;
+      var score = -1;
+      if(nt && nt.indexOf(nq)===0) score = 0;              // ticker prefix (best)
+      else if(nn && nn.indexOf(nq)===0) score = 1;         // name prefix
+      else continue;                                       // strict: prefix only
 
-      scored.push({x:x, tier:tier, len:(tier<=1?nt.length:nn.length)});
+      // Slight boost for exact prefix (shorter distance)
+      var extra = (score===0 ? nt.length : nn.length);
+      scored.push({x:x, score:score, extra:extra});
     }
 
     scored.sort(function(a,b){
-      if(a.tier!==b.tier) return a.tier-b.tier;
-      if(a.len!==b.len) return a.len-b.len;
+      if(a.score!==b.score) return a.score-b.score;
+      if(a.extra!==b.extra) return a.extra-b.extra;
+      // stable fallback: ticker
       var at = String((a.x||{}).t||"");
       var bt = String((b.x||{}).t||"");
       return at.localeCompare(bt);
     });
 
-    // Prefer strict prefix tiers (0-2). If too few, allow contains tiers (3-4).
-    var primary = scored.filter(function(o){ return o.tier<=2; });
-    var finalList = primary.length>=10 ? primary : scored;
-
-    return finalList.slice(0, 30).map(function(o){
+    return scored.slice(0, 30).map(function(o){
       var x=o.x||{};
       var t=String(x.t||"").trim();
       var ex=String(x.ex||"NASDAQ").trim().toUpperCase();
       var tv=buildTVSymbolFromUS(t, ex);
-      return { id:"US_"+t, name:(x.n||t)+" ("+t+")", code:t, ticker:t, tv:tv, mkt:"US", sec:"US" };
+      return { id:"US_"+t, name:x.n+" ("+t+")", code:t, ticker:t, tv:tv, mkt:"US", sec:"US" };
     });
   }
 
@@ -4333,8 +3858,8 @@ document.addEventListener('DOMContentLoaded', function(){
       if(sec && sec.indexOf(ql)>-1)    score += 20;
       if(mkt && mkt.indexOf(ql)>-1)    score += 15;
 
-      // small boost for KR when Hangul query (only when there is an actual match)
-      if(score>0 && /[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
+      // small boost for KR when Hangul query
+      if(/[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
 
       return score>0 ? {x:x,score:score} : null;
     }).filter(Boolean).sort(function(a,b){
@@ -4839,6 +4364,68 @@ function autoPrefillCommentIfEmpty(s){
     injectHeaderWidgets();
   }
 })();
+</script>
+<script>
+// ===== StockNote KR Price Gateway =====
+const KR_PRICE_GW = "https://curly-math-4532.kbrok45.workers.dev";
+
+async function snFetchKRQuotes(codes6){
+  if(!codes6 || !codes6.length) return null;
+
+  const key = "sn_last_good_kr_quotes_v1";
+
+  try{
+    const url = `${KR_PRICE_GW}/quotes?codes=${encodeURIComponent(codes6.join(","))}`;
+    const res = await fetch(url, { cache: "no-store" });
+    const data = await res.json();
+
+    if(data && data.ok && data.quotes){
+      localStorage.setItem(key, JSON.stringify(data));
+      return { data, stale:false };
+    }
+    throw new Error("worker_not_ok");
+  } catch(e){
+    const last = localStorage.getItem(key);
+    if(last) return { data: JSON.parse(last), stale:true };
+    return null;
+  }
+}
+</script>
+
+<script>
+async function snUpdateHomePricesKR(){
+  try{
+    // stocks 배열에서 국내 6자리 코드만
+    const kr = (stocks || []).filter(s => s && /^\d{6}$/.test(String(s.code || "")));
+    const codes = kr.map(s => String(s.code));
+
+    if(!codes.length) return;
+
+    const result = await snFetchKRQuotes(codes);
+    if(!result || !result.data || !result.data.quotes) return;
+
+    const quotes = result.data.quotes; // { "005930": {...}, ... }
+
+    kr.forEach(s => {
+      const q = quotes[String(s.code)];
+      if(!q || !q.ok || !q.tradePrice) return;
+
+      // v165 카드 렌더에서 쓰는 값으로 넣기
+      s.price = Number(q.tradePrice).toLocaleString();
+
+      const cr = Number(q.changeRate || 0);
+      s.chg = cr ? ((cr > 0 ? "+" : "") + (cr*100).toFixed(2) + "%") : "";
+
+      const cp = Number(q.changePrice || 0);
+      s.trend = cp > 0 ? "up" : (cp < 0 ? "down" : "neutral");
+    });
+
+    // 홈 카드 다시 그리기
+    if(typeof renderQuickGrid === "function") renderQuickGrid();
+  } catch(e) {
+    // 콘솔 에러 최소화: 조용히 실패
+  }
+}
 </script>
 
 </body>
