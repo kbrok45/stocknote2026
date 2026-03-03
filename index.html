@@ -8,39 +8,62 @@
 <script>
 
 // --- External chart deep links (KR) ---
-function buildKrLinks(code, name){
+function buildKrLinks(code, name, extra){
   code = String(code||'').trim();
   name = String(name||'').trim();
+  extra = extra||{};
   var q = encodeURIComponent(code || name);
+  // Investing direct URL (optional, from DB)
+  var inv = extra.investingUrl ? String(extra.investingUrl) : '';
+  if(inv && inv.indexOf('http')!==0) inv='';
   return {
     naver_main: 'https://finance.naver.com/item/main.naver?code=' + encodeURIComponent(code),
     naver_chart: 'https://finance.naver.com/item/fchart.naver?code=' + encodeURIComponent(code),
+    alphasquare: extra.alphasquare || '',
     tradingview: 'https://kr.tradingview.com/symbols/KRX-' + encodeURIComponent(code) + '/',
-    investing_search: 'https://www.investing.com/search/?q=' + q
+    investing: inv || ('https://www.investing.com/search/?q=' + q),
+    google: 'https://www.google.com/search?q=' + encodeURIComponent((name||code) + ' 주가 차트'),
+    yahoo: 'https://finance.yahoo.com/quote/' + encodeURIComponent(extra.yahooTicker || '') 
   };
 }
-function renderLinkPanel(containerEl, links, extra){
+function renderLinkPanel(containerEl, links, ctx){
   if(!containerEl) return;
+  ctx = ctx||{};
+  // Buttons: open inside dashboard; fallback to new tab when blocked
+  var items = [
+    {k:'alphasquare', label:'AlphaSquare', url:links.alphasquare},
+    {k:'tradingview', label:'TradingView', url:links.tradingview},
+    {k:'investing', label:'Investing', url:links.investing},
+    {k:'naver_chart', label:'네이버(차트)', url:links.naver_chart},
+    {k:'naver_main', label:'네이버(요약)', url:links.naver_main},
+    {k:'google', label:'Google', url:links.google},
+    {k:'yahoo', label:'Yahoo', url:links.yahoo}
+  ].filter(x=>x.url);
+
   var h = '<div class="linkpanel">';
-  function btn(url, label){
-    if(!url) return '';
-    return '<a class="lbtn" href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+  for(var i=0;i<items.length;i++){
+    var it=items[i];
+    h += '<button type="button" class="lbtn" data-src="'+it.k+'" data-url="'+it.url+'">'+it.label+'</button>';
   }
-  h += btn(links.naver_main, '네이버(요약)');
-  h += btn(links.naver_chart, '네이버(차트)');
-  if(extra && extra.alphasquare) h += btn(extra.alphasquare, 'AlphaSquare');
-  h += btn(links.tradingview, 'TradingView');
-  // Investing direct chart is not reliably derivable from KR code; use search deep link (still no re-typing).
-  h += btn(links.investing_search, 'Investing(검색)');
   h += '</div>';
   containerEl.innerHTML = h;
+
+  // Bind clicks (event delegation)
+  containerEl.onclick = function(ev){
+    var t = ev.target;
+    if(!t || !t.getAttribute) return;
+    var url = t.getAttribute('data-url');
+    var key = t.getAttribute('data-src');
+    if(!url) return;
+    openExternalDashboard(url, key, items);
+  };
 }
 
 /* Cache-buster for GitHub Pages:
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v172";
+window.APP_BUILD = "v174";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -53,7 +76,77 @@ window.__ASSET_VER__ = window.APP_BUILD;
       location.replace(url.toString());
     }
   }catch(e){}
-})();
+}
+// --- External dashboard open (best-effort embed) ---
+var __EXT_LAST_URL = '';
+function openExternalDashboard(url, key, items){
+  try{
+    var dash = document.getElementById('extDash');
+    var frame = document.getElementById('extDashFrame');
+    var tabs = document.getElementById('extDashTabs');
+    var st = document.getElementById('extDashStatus');
+    var blocked = document.getElementById('extDashBlocked');
+    var openBtn = document.getElementById('extDashOpenTabBtn');
+    var closeBtn = document.getElementById('extDashCloseBtn');
+    if(!dash||!frame||!tabs||!st||!blocked||!openBtn||!closeBtn) return;
+
+    dash.style.display = '';
+    __EXT_LAST_URL = url;
+    openBtn.onclick = function(){ if(__EXT_LAST_URL) window.open(__EXT_LAST_URL, '_blank', 'noopener'); };
+    closeBtn.onclick = function(){ dash.style.display='none'; frame.src='about:blank'; blocked.style.display='none'; st.textContent=''; };
+
+    // render tabs
+    if(items && items.length){
+      var th='';
+      for(var i=0;i<items.length;i++){
+        var it=items[i];
+        var active = (it.k===key)?' active':'';
+        th += '<div class="tab'+active+'" data-k="'+it.k+'" data-url="'+it.url+'">'+it.label+'</div>';
+      }
+      tabs.innerHTML = th;
+      tabs.onclick = function(ev){
+        var t=ev.target;
+        if(!t||!t.getAttribute) return;
+        var u=t.getAttribute('data-url');
+        var k=t.getAttribute('data-k');
+        if(!u) return;
+        openExternalDashboard(u, k, items);
+      };
+    }
+
+    // attempt embed with timeout-based block detection
+    blocked.style.display='none';
+    st.textContent = '불러오는 중… (일부 사이트는 보안정책으로 앱 안에 표시가 제한될 수 있다)';
+    var done = false;
+    var timer = setTimeout(function(){
+      if(done) return;
+      done = true;
+    }, 1);
+    clearTimeout(timer);
+
+    var t0 = Date.now();
+    var timed = false;
+    var to = setTimeout(function(){
+      if(done) return;
+      timed = true;
+      // likely blocked or slow; show message + open-in-tab
+      blocked.style.display='flex';
+      blocked.innerHTML = '<div><b>앱 안에 표시가 제한될 수 있다.</b><br>해당 사이트가 iframe 표시를 막는 경우다.<br><br><a class="lbtn" href="'+url+'" target="_blank" rel="noopener noreferrer">새 탭에서 열기</a></div>';
+      st.textContent = '표시 제한(차단) 의심 → 새 탭 열기를 권장한다.';
+    }, 2200);
+
+    frame.onload = function(){
+      if(done) return;
+      done = true;
+      clearTimeout(to);
+      // If it loads quickly, assume ok. Some sites load blank due to XFO; keep message minimal.
+      if(timed) return;
+      st.textContent = '표시 중';
+    };
+    frame.src = url;
+  }catch(e){}
+}
+)();
 </script>
 
 
@@ -696,6 +789,24 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .linkpanel{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .linkpanel .lbtn{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;border-radius:10px;border:1px solid rgba(127,127,127,.35);text-decoration:none;font-size:13px;line-height:1}
 body.dark .linkpanel .lbtn{border-color:rgba(200,200,200,.25)}
+
+
+/* --- v173 external dashboard --- */
+.extdash{margin-top:12px;border:1px solid rgba(127,127,127,.25);border-radius:14px;overflow:hidden}
+.extdash-head{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(127,127,127,.08)}
+.extdash-title{font-weight:700;font-size:13px;white-space:nowrap}
+.extdash-status{font-size:12px;opacity:.85;flex:1;min-height:16px}
+.extdash-actions{display:flex;gap:8px}
+.extdash-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;border-top:1px solid rgba(127,127,127,.15);background:rgba(127,127,127,.04)}
+.extdash-tabs .tab{padding:7px 10px;border-radius:999px;border:1px solid rgba(127,127,127,.25);font-size:12px;cursor:pointer;user-select:none}
+.extdash-tabs .tab.active{font-weight:700}
+.extdash-body{position:relative;height:420px}
+.extdash-body iframe{width:100%;height:100%;border:0;background:transparent}
+.extdash-blocked{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;text-align:center;font-size:13px;line-height:1.45;background:rgba(0,0,0,.03)}
+body.dark .extdash{border-color:rgba(200,200,200,.20)}
+body.dark .extdash-head{background:rgba(255,255,255,.06)}
+body.dark .extdash-tabs{background:rgba(255,255,255,.04)}
+body.dark .extdash-blocked{background:rgba(255,255,255,.04)}
 
 </style>
 
@@ -1667,7 +1778,21 @@ function renderRecentList() {
   }).join('');
 }
 function relT(d){var n=new Date(),diff=Math.floor((n-d)/1000);if(diff<60)return'방금';if(diff<3600)return Math.floor(diff/60)+'분 전';if(diff<86400)return Math.floor(diff/3600)+'시간 전';return Math.floor(diff/86400)+'일 전';}
-function goToStock(id){cid=id;showPage('note');renderList();renderDetail();var s=gbi(id);if(s){rfPrice(id);clearInterval(prt);prt=setInterval(function(){rfPrice(cid);},30000);}}
+function goToStock(id){
+  // normalize id to string to avoid multi-active glitches when ids come from Drive/stringified values
+  cid = String(id);
+  // leaving any multi-select state behind when navigating from Home -> Note
+  try{ selectionMode=false; selectedIds && selectedIds.clear && selectedIds.clear(); }catch(e){}
+  showPage('note');
+  renderList();
+  renderDetail();
+  var s=gbi(cid);
+  if(s){
+    rfPrice(cid);
+    clearInterval(prt);
+    prt=setInterval(function(){ rfPrice(cid); },30000);
+  }
+}
 
 // ══════════════════════════════════════════
 // SEARCH
@@ -3278,12 +3403,22 @@ function renderList(){
     var tl={buy:'매수',sell:'매도',hold:'보유',watch:'관심'}[s.sig]||'관심';
     var pc=s.trend==='up'?'cu':s.trend==='down'?'cd':'cn';var ti=s.trend==='up'?'▲':s.trend==='down'?'▼':'━';
     var tc2=s.trend==='up'?'tu':s.trend==='down'?'td':'tn';
-    div.className='scard '+tc2+(s.id===cid?' active':'');div.onclick=function(){ if(selectionMode){ toggleSelected(s.id); return; } selectS(s.id); };
+    div.className='scard '+tc2+(String(s.id)===String(cid)?' active':'');div.onclick=function(){ if(selectionMode){ toggleSelected(s.id); return; } selectS(s.id); };
     div.innerHTML=selHtml+'<div class="scrow"><div><div class="scname">'+s.name+'</div><div class="sccode">'+s.code+(s.mkt?' · '+s.mkt:'')+'</div></div><div style="text-align:right"><div class="scprice '+pc+'">'+(s.price||'---')+'</div><div style="font-size:10px" class="'+pc+'">'+ti+' '+(s.chg||'')+'</div></div></div><div class="scbot"><span class="tag '+tc+'">'+tl+'</span>'+(s.tgt?'<span class="tag" style="background:rgba(0,212,170,.1);color:var(--ac);font-size:9px">목표 '+s.tgt+'</span>':'')+(s.sl?'<span class="tag" style="background:rgba(255,71,87,.1);color:var(--dn);font-size:9px">손절 '+s.sl+'</span>':'')+'</div>';
     list.appendChild(div);
   });
 }
-function selectS(id){cid=id;clearInterval(prt);renderList();renderDetail();var s=gbi(id);if(s){rfPrice(id);prt=setInterval(function(){rfPrice(cid);},30000);}}
+function selectS(id){
+  cid = String(id);
+  clearInterval(prt);
+  renderList();
+  renderDetail();
+  var s=gbi(cid);
+  if(s){
+    rfPrice(cid);
+    prt=setInterval(function(){ rfPrice(cid); },30000);
+  }
+}
 function renderDetail(){
   var s=gbi(cid);if(!s)return;
   document.getElementById('empty').style.display='none';
