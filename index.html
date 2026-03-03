@@ -63,7 +63,7 @@ function renderLinkPanel(containerEl, links, ctx){
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v174";
+window.APP_BUILD = "v175";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -375,7 +375,7 @@ function openExternalDashboard(url, key, items){
 <title>주식투자전략 노트</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;600&family=Bebas+Neue&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f1115;--sf:#151924;--sf2:#1b2030;--bd:#232a3a;--ac:#3fb9a6;--a2:#ff8a5c;--a3:#8b7cf6;--up:#35c46a;--dn:#e15b64;--ne:#e0c35a;--tx:#e6e8ee;--tx2:#8b93a8;--tx3:#5e667b;}
+:root{--bg:#0f1115;--sf:#151924;--sf2:#1b2030;--bd:#232a3a;--ac:#3fb9a6;--a2:#ff8a5c;--a3:#8b7cf6;--up:#e15b64;--dn:#2563eb;--ne:#e0c35a;--tx:#e6e8ee;--tx2:#8b93a8;--tx3:#5e667b;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
 header{background:var(--sf);border-bottom:1px solid var(--bd);padding:0 18px;display:flex;align-items:center;justify-content:space-between;height:54px;position:sticky;top:0;z-index:300;overflow:visible;}
@@ -2148,10 +2148,56 @@ document.getElementById('modal').addEventListener('click',function(e){if(e.targe
 // ══════════════════════════════════════════
 // PRICE
 // ══════════════════════════════════════════
-async function fetchNaver(code){
+async async function fetchNaver(code){
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return null;
   if(typeof window.netMarkCall==='function') window.netMarkCall();
-try{var u='https://m.stock.naver.com/api/stock/'+code+'/basic';var r=await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(u),{signal:AbortSignal.timeout(7000)});if(!r.ok)return null;var d=await r.json();var p=JSON.parse(d.contents);if(!p||!p.currentPrice)return null;var price=parseFloat(String(p.currentPrice).replace(/,/g,''));var amt=parseFloat(String(p.fluctuationsValue||0).replace(/,/g,'').replace(/[^0-9.-]/g,''));var pct=parseFloat(String(p.fluctuationsRatio||0).replace(/[^0-9.-]/g,''));return{price:price,amt:amt,pct:pct,cur:'KRW',src:'naver'};}catch(e){return null;}}
+  code = String(code||'').trim();
+  try{
+    // Prefer direct JSON endpoints (no proxy) for best freshness
+    var u1 = 'https://api.stock.naver.com/stock/' + code + '/basic';
+    var u2 = 'https://m.stock.naver.com/api/stock/' + code + '/basic';
+    async function parsePayload(p){
+      if(!p) return null;
+      // both endpoints commonly expose these keys (names may vary slightly)
+      var cp = p.currentPrice ?? p.closePrice ?? p.nowPrice ?? null;
+      if(cp==null) return null;
+      var price = parseFloat(String(cp).replace(/,/g,''));
+      var amt = parseFloat(String(p.fluctuationsValue ?? p.compareToPreviousClosePrice ?? 0).replace(/,/g,'').replace(/[^0-9.-]/g,''));
+      var pct = parseFloat(String(p.fluctuationsRatio ?? p.compareToPreviousClosePriceRate ?? 0).replace(/[^0-9.-]/g,''));
+      if(!isFinite(price)) return null;
+      if(!isFinite(amt)) amt = 0;
+      if(!isFinite(pct)) pct = 0;
+      return {price:price, amt:amt, pct:pct, cur:'KRW', src:'naver'};
+    }
+    async function tryDirect(u){
+      try{
+        var r = await fetch(u, {signal: AbortSignal.timeout(4500), credentials:'omit', cache:'no-store'});
+        if(!r.ok) return null;
+        var p = await r.json();
+        return await parsePayload(p);
+      }catch(e){ return null; }
+    }
+    var out = await tryDirect(u1);
+    if(!out) out = await tryDirect(u2);
+    if(out) return out;
+
+    // Fallback: proxy (may be cached / slightly delayed)
+    async function tryProxy(u){
+      try{
+        var r = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(u), {signal: AbortSignal.timeout(7000), cache:'no-store'});
+        if(!r.ok) return null;
+        var d = await r.json();
+        var p = JSON.parse(d.contents);
+        return await parsePayload(p);
+      }catch(e){ return null; }
+    }
+    out = await tryProxy(u1);
+    if(!out) out = await tryProxy(u2);
+    return out;
+  }catch(e){
+    return null;
+  }
+}
 async function fetchYahoo(ticker){
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return null;
   if(typeof window.netMarkCall==='function') window.netMarkCall();
