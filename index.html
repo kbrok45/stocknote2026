@@ -974,11 +974,35 @@ window.netOk = window.netOk || function(){ window.NET.backoffMs=0; window.NET.co
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://s3.tradingview.com/tv.js"></script>
 
+function snGenId(){
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
+
+function snFixDuplicateIds(list){
+  const seen = new Set();
+  let changed = false;
+
+  (list || []).forEach(s=>{
+    const id = String(s.id || "");
+    if(!id || seen.has(id)){
+      s.id = snGenId();
+      changed = true;
+    }
+    seen.add(String(s.id));
+  });
+
+  if(changed){
+    localStorage.setItem('snv5', JSON.stringify(list));
+  }
+}
+
+
 <script>
 // ══════════════════════════════════════════
 // DATA & STATE
 // ══════════════════════════════════════════
 var stocks = JSON.parse(localStorage.getItem('snv5') || '[]');
+snFixDuplicateIds(stocks);
 
 
 // ─────────────────────────────────────────────
@@ -1041,15 +1065,16 @@ var driveReady=false, driveFileId=null, gapiInited=false, gisInited=false;
 var tokenClient=null, SCOPES='https://www.googleapis.com/auth/drive.file';
 var CLIENT_ID = localStorage.getItem('snv5_clientId') || '';
 var DRIVE_FNAME = '주식투자전략노트_data.json';
-
+function snGenId(){
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
 if (!stocks.length) {
-  var t=window.__ASSET_VER__;
   stocks=[
-    {id:t+1,name:'삼성전자',code:'005930',mkt:'KOSPI',ticker:'005930.KS',tv:'KRX:005930',price:'',chg:'',trend:'up',sig:'buy',tgt:'78,000',sl:'73,500',cn:'120일 이평선 지지. MACD 골든크로스.',bt:'75,000원 이하 분할매수',st:'78,000 → 80,000 단계 매도',ol:'HBM 수주 확대, 하반기 실적 개선',sy:'분할매수 1차70%/2차30%',risk:'2',bp:'75000',sh:'100',memo:'AI 반도체 수혜주',sec:'반도체',upd:new Date().toISOString()},
-    {id:t+2,name:'SK하이닉스',code:'000660',mkt:'KOSPI',ticker:'000660.KS',tv:'KRX:000660',price:'',chg:'',trend:'up',sig:'buy',tgt:'200,000',sl:'181,000',cn:'신고가 후 눌림',bt:'185,000 눌림 매수',st:'200,000 목표',ol:'HBM3E 양산',sy:'모멘텀 단기매매',risk:'3',bp:'187000',sh:'30',memo:'변동성 주의',sec:'반도체',upd:new Date().toISOString()},
-    {id:t+3,name:'NVIDIA',code:'NVDA',mkt:'NASDAQ',ticker:'NVDA',tv:'NASDAQ:NVDA',price:'',chg:'',trend:'up',sig:'buy',tgt:'1200',sl:'900',cn:'장기 우상향',bt:'900~950 분할매수',st:'1200 1차목표',ol:'GPU 수요 급증',sy:'장기 보유',risk:'2',bp:'950',sh:'20',memo:'핵심 보유',sec:'반도체',upd:new Date().toISOString()},
-    {id:t+4,name:'NAVER',code:'035420',mkt:'KOSPI',ticker:'035420.KS',tv:'KRX:035420',price:'',chg:'',trend:'neutral',sig:'watch',tgt:'195,000',sl:'175,000',cn:'박스권 횡보',bt:'180,000 지지 확인',st:'195,000 돌파 확인',ol:'AI 서비스',sy:'관망',risk:'2',bp:'',sh:'',memo:'AI 시너지',sec:'IT서비스',upd:new Date().toISOString()},
-    {id:t+5,name:'카카오',code:'035720',mkt:'KOSPI',ticker:'035720.KS',tv:'KRX:035720',price:'',chg:'',trend:'down',sig:'watch',tgt:'60,000',sl:'45,000',cn:'하락 추세',bt:'50,000 지지 확인 후',st:'60,000 단기 목표',ol:'규제 리스크',sy:'관망',risk:'3',bp:'',sh:'',memo:'규제 모니터링',sec:'IT서비스',upd:new Date().toISOString()},
+    {id: snGenId(),name:'삼성전자',code:'005930',mkt:'KOSPI',ticker:'005930.KS',tv:'KRX:005930',price:'',chg:'',trend:'up',sig:'buy',tgt:'78,000',sl:'73,500',cn:'120일 이평선 지지. MACD 골든크로스.',bt:'75,000원 이하 분할매수',st:'78,000 → 80,000 단계 매도',ol:'HBM 수주 확대, 하반기 실적 개선',sy:'분할매수 1차70%/2차30%',risk:'2',bp:'75000',sh:'100',memo:'AI 반도체 수혜주',sec:'반도체',upd:new Date().toISOString()},
+    {id: snGenId(),name:'SK하이닉스',code:'000660',mkt:'KOSPI',ticker:'000660.KS',tv:'KRX:000660',price:'',chg:'',trend:'up',sig:'buy',tgt:'200,000',sl:'181,000',cn:'신고가 후 눌림',bt:'185,000 눌림 매수',st:'200,000 목표',ol:'HBM3E 양산',sy:'모멘텀 단기매매',risk:'3',bp:'187000',sh:'30',memo:'변동성 주의',sec:'반도체',upd:new Date().toISOString()},
+    {id: snGenId(),name:'NVIDIA',code:'NVDA',mkt:'NASDAQ',ticker:'NVDA',tv:'NASDAQ:NVDA',price:'',chg:'',trend:'up',sig:'buy',tgt:'1200',sl:'900',cn:'장기 우상향',bt:'900~950 분할매수',st:'1200 1차목표',ol:'GPU 수요 급증',sy:'장기 보유',risk:'2',bp:'950',sh:'20',memo:'핵심 보유',sec:'반도체',upd:new Date().toISOString()},
+    {id: snGenId(),name:'NAVER',code:'035420',mkt:'KOSPI',ticker:'035420.KS',tv:'KRX:035420',price:'',chg:'',trend:'neutral',sig:'watch',tgt:'195,000',sl:'175,000',cn:'박스권 횡보',bt:'180,000 지지 확인',st:'195,000 돌파 확인',ol:'AI 서비스',sy:'관망',risk:'2',bp:'',sh:'',memo:'AI 시너지',sec:'IT서비스',upd:new Date().toISOString()},
+    {id: snGenId(),name:'카카오',code:'035720',mkt:'KOSPI',ticker:'035720.KS',tv:'KRX:035720',price:'',chg:'',trend:'down',sig:'watch',tgt:'60,000',sl:'45,000',cn:'하락 추세',bt:'50,000 지지 확인 후',st:'60,000 단기 목표',ol:'규제 리스크',sy:'관망',risk:'3',bp:'',sh:'',memo:'규제 모니터링',sec:'IT서비스',upd:new Date().toISOString()},
   ];
   sv();
 }
@@ -1908,8 +1933,27 @@ if(!results.length){
   // default active item for Enter/Arrow keys
   try{ setActiveItem(ac,0); }catch(err){}
 }
+function snFixDuplicateIds(list){
+  const seen = new Set();
+  let changed = false;
 
+  (list || []).forEach(s=>{
+    const id = String(s.id || "");
+    if(!id || seen.has(id)){
+      s.id = snGenId();
+      changed = true;
+    }
+    seen.add(String(s.id));
+  });
 
+  if(changed){
+    try{ sv(); }catch(e){}
+  }
+}
+
+function snGenId(){
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
 function pickStock(it,srcList){
   if(typeof it==='string')it=JSON.parse(it);
   var overseas=it.overseas||!(/^\d{6}$/.test(it.code));
@@ -1922,7 +1966,7 @@ function pickStock(it,srcList){
   if(ex){document.getElementById(srcList).className='hac';
     if(srcList==='homeAcList'){document.getElementById('homeSearch').value=''; goToStock(ex.id);}
     else{document.getElementById('msrch').value=''; closeModal();}goToStock(ex.id);return;}
-  var s={id:window.__ASSET_VER__,name:it.name,code:it.code,mkt:it.mkt||'',ticker:ticker,tv:tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};
+  var s={id:window.snGenId(),name:it.name,code:it.code,mkt:it.mkt||'',ticker:ticker,tv:tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};
   stocks.unshift(s);sv();
   document.getElementById(srcList).className='hac';
   if(srcList==='homeAcList')document.getElementById('homeSearch').value='';
@@ -3688,10 +3732,13 @@ document.addEventListener('DOMContentLoaded', function(){
       try{ closeModal(); }catch(e){}
       return;
     }
-
+function snGenId(){
+  // 짧고 충돌 거의 없는 고유 id
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
     // Add to list using schema compatible with existing app
     list.unshift({
-      id: String(window.__ASSET_VER__),
+      id: snGenId(),
       name: name || v,
       code: code || v,
       mkt: mkt,
