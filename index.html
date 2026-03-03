@@ -949,8 +949,8 @@ body[data-theme="light"] .tvmono{color:var(--text);}
 <div class="sind" id="sind"></div>
 
 <!-- Google API -->
-<script src="https://apis.google.com/js/api.js"></script>
-<script>
+<script src="https://apis.google.com/js/api.js">
+
 // ---------- Network Guard (default OFF to avoid CORS/429) ----------
 window.NET = window.NET || { enabled:false, cooldownUntil:0, minIntervalMs:1500, lastCallAt:0, backoffMs:0 };
 window.netNow = window.netNow || function(){ return window.__ASSET_VER__; };
@@ -969,15 +969,17 @@ window.netBackoff = window.netBackoff || function(reason){
   try{ console.warn('NET backoff', window.NET.backoffMs, reason||''); }catch(e){}
 };
 window.netOk = window.netOk || function(){ window.NET.backoffMs=0; window.NET.cooldownUntil=0; };
+
 </script>
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://s3.tradingview.com/tv.js"></script>
 
-<script>
 function snGenId(){
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
+
+window.snGenId = snGenId;
 function snFixDuplicateIds(list){
   const seen = new Set();
   let changed = false;
@@ -995,7 +997,6 @@ function snFixDuplicateIds(list){
     localStorage.setItem('snv5', JSON.stringify(list));
   }
 }
-</script>
 
 
 <script>
@@ -1812,7 +1813,29 @@ async function yahooSearch(q){
 }
 
 
-async function runSearch(q,lid){
+async 
+// ---- Hangul 초성 자동완성 지원 ----
+var __CHO__ = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+function toChosung(str){
+  str = String(str||"");
+  var out = "";
+  for(var i=0;i<str.length;i++){
+    var ch = str.charCodeAt(i);
+    if(ch >= 0xAC00 && ch <= 0xD7A3){
+      var idx = Math.floor((ch - 0xAC00) / 588);
+      out += (__CHO__[idx] || "");
+    }else if(str[i] >= "ㄱ" && str[i] <= "ㅎ"){
+      out += str[i];
+    }
+  }
+  return out;
+}
+function isChosungQuery(q){
+  q = String(q||"").trim();
+  return q.length>0 && /^[ㄱ-ㅎ]+$/.test(q);
+}
+
+function runSearch(q,lid){
   var ac=document.getElementById(lid);if(!ac)return;
   var qRaw=(q||'');
   var ql=qRaw.toLowerCase().trim();
@@ -1849,6 +1872,12 @@ async function runSearch(q,lid){
 
       // small boost for KR when Hangul query
       if(/[ㄱ-ㆎ가-힣]/.test(qRaw) && (x.mkt==='KOSPI' || x.mkt==='KOSDAQ' || x.mkt==='ETF')) score += 8;
+
+      // 초성 검색: 예) ㅅㅅㅈㅈ → 삼성전자
+      if(isChosungQuery(qRaw)){
+        var cho = toChosung(x.name||'');
+        if(cho && cho.indexOf(qRaw.trim())>-1) score += 70;
+      }
 
       return score>0 ? {x:x,score:score} : null;
     }).filter(Boolean).sort(function(a,b){
@@ -1956,22 +1985,61 @@ function snGenId(){
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 function pickStock(it,srcList){
-  if(typeof it==='string')it=JSON.parse(it);
-  var overseas=it.overseas||!(/^\d{6}$/.test(it.code));
+  if(typeof it==='string') it=JSON.parse(it);
+  var overseas = it.overseas || !(/^\d{6}$/.test(it.code));
   // ticker: 내장 DB에 있으면 그것 사용, 없으면 자동 생성
-  var ticker=it.ticker||(overseas?it.code:it.code+'.KS');
+  var ticker = it.ticker || (overseas ? it.code : (it.code + '.KS'));
   // tv 심볼: 내장 DB에 검증된 것 있으면 사용, 없으면 자동 생성
-  var mktEx={'NASDAQ':'NASDAQ','NYSE':'NYSE','AMEX':'AMEX'}[it.mkt]||'NASDAQ';
-  var tv=it.tv||(overseas?(mktEx+':'+it.code):('KRX:'+it.code));
-  var ex=stocks.find(function(s){return s.code===it.code;});
-  if(ex){document.getElementById(srcList).className='hac';
-    if(srcList==='homeAcList'){document.getElementById('homeSearch').value=''; goToStock(ex.id);}
-    else{document.getElementById('msrch').value=''; closeModal();}goToStock(ex.id);return;}
-  var s={id:window.snGenId(),name:it.name,code:it.code,mkt:it.mkt||'',ticker:ticker,tv:tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};
-  stocks.unshift(s);sv();
+  var mktEx = {'NASDAQ':'NASDAQ','NYSE':'NYSE','AMEX':'AMEX'}[it.mkt] || 'NASDAQ';
+  var tv = it.tv || (overseas ? (mktEx + ':' + it.code) : ('KRX:' + it.code));
+
+  var ex = stocks.find(function(s){ return s.code === it.code; });
+  if(ex){
+    document.getElementById(srcList).className='hac';
+    if(srcList==='homeAcList'){
+      document.getElementById('homeSearch').value='';
+      goToStock(ex.id);
+    } else {
+      document.getElementById('msrch').value='';
+      closeModal();
+      goToStock(ex.id);
+    }
+    return;
+  }
+
+  var s = {
+    id: snGenId(),
+    name: it.name,
+    code: it.code,
+    mkt: it.mkt || '',
+    ticker: ticker,
+    tv: tv,
+    price: '',
+    chg: '',
+    trend: 'neutral',
+    sig: 'watch',
+    tgt: '',
+    sl: '',
+    cn: '',
+    bt: '',
+    st: '',
+    ol: '',
+    sy: '',
+    risk: '2',
+    bp: '',
+    sh: '',
+    memo: '',
+    sec: '',
+    upd: new Date().toISOString()
+  };
+
+  stocks.unshift(s);
+  sv();
+
   document.getElementById(srcList).className='hac';
-  if(srcList==='homeAcList')document.getElementById('homeSearch').value='';
-  else{document.getElementById('msrch').value='';closeModal();}
+  if(srcList==='homeAcList') document.getElementById('homeSearch').value='';
+  else { document.getElementById('msrch').value=''; closeModal(); }
+
   goToStock(s.id);
 }
 
@@ -2091,28 +2159,78 @@ function rebuildDBIndex(){
     });
   }catch(e){}
 }
+async function fetchKRWorkerQuote(code6){
+  var code = String(code6).replace(/\D/g,'').padStart(6,'0');
+  var url  = KR_PRICE_GW + '/quotes?codes=' + encodeURIComponent(code);
+
+  var res = await fetch(url, { cache: 'no-store' });
+  var j   = await res.json();
+  var q   = j && j.quotes ? j.quotes[code] : null;
+
+  if(!j || !j.ok || !q || !q.ok) return null;
+
+  var price = Number(q.tradePrice);
+  var amt   = Number(q.changePrice || 0);
+  var pct   = Number(q.changeRate || 0) * 100; // ratio -> percent
+
+  return { price: price, amt: amt, pct: pct, cur: 'KRW', src: 'daum' };
+}
+
+
 async function rfPrice(id,silent){
-  var s=gbi(id);if(!s)return;
-  if(!silent&&id===cid){var lp=document.getElementById('liveP');if(lp)lp.innerHTML='<span class="spin">↻</span>';}
-  var isKR=/^\d{6}$/.test(s.code);
-  var data=isKR?await fetchNaver(s.code):null;
-  if(!data&&s.ticker)data=await fetchYahoo(s.ticker);
-  if(!data){if(!silent&&id===cid){var lp2=document.getElementById('liveP');if(lp2&&lp2.querySelector('.spin'))lp2.textContent=s.price||'오류';}return;}
-  var sign=data.pct>=0?'+':'-';
-  s.price=fp(data.price,data.cur);s.chg=sign+fp(Math.abs(data.amt),data.cur)+' ('+sign+Math.abs(data.pct).toFixed(2)+'%)';
-  s.trend=data.pct>0.3?'up':data.pct<-0.3?'down':'neutral';s._src=data.src;s._ts=new Date().toISOString();
-  s._at=data.pct>1?'강한상승':data.pct>0.3?'상승':data.pct<-1?'강한하락':data.pct<-0.3?'하락':'횡보';
-  s._as=data.pct>2?'매수 고려':data.pct<-2?'매도/손절 검토':'관망';
-  sv();
-  if(id===cid){
-    var lp3=document.getElementById('liveP'),lc=document.getElementById('liveC'),lt=document.getElementById('lts');
-    var pc=s.trend==='up'?'cu':s.trend==='down'?'cd':'cn';var cc=s.trend==='up'?'lcu':s.trend==='down'?'lcd':'lcn';
-    if(lp3){lp3.textContent=s.price;lp3.className='livep '+pc;}if(lc){lc.textContent=s.chg;lc.className='livec '+cc;}
-    if(lt)lt.textContent=(s._src==='naver'?'📡 네이버':'📡 Yahoo')+' '+new Date().toLocaleTimeString('ko-KR');
-    updSugg(s);calcPnl();
+  var s = gbi(id); if(!s) return;
+
+  if(!silent && id===cid){
+    var lp = document.getElementById('liveP');
+    if(lp) lp.innerHTML = '<span class="spin">↻</span>';
   }
+
+  var isKR = /^\d{6}$/.test(s.code);
+  var data = isKR ? await fetchKRWorkerQuote(s.code) : null;
+  if(!data && !isKR && s.ticker) data = await fetchYahoo(s.ticker);
+
+  if(!data){
+    if(!silent && id===cid){
+      var lp2=document.getElementById('liveP');
+      if(lp2 && lp2.querySelector('.spin')) lp2.textContent = s.price || '오류';
+    }
+    return;
+  }
+
+  var sign = data.pct >= 0 ? '+' : '-';
+  s.price = fp(data.price, data.cur);
+  s.chg   = sign + fp(Math.abs(data.amt), data.cur) + ' (' + sign + Math.abs(data.pct).toFixed(2) + '%)';
+  // ✅ 색상은 임계치가 아니라 '부호'로 고정
+  s.trend = data.amt > 0 ? 'up' : (data.amt < 0 ? 'down' : 'neutral');
+  s._src  = data.src;
+  s._ts   = new Date().toISOString();
+
+  s._at = data.pct > 1 ? '강한상승' : data.pct > 0 ? '상승' : data.pct < -1 ? '강한하락' : data.pct < 0 ? '하락' : '횡보';
+  s._as = data.pct > 2 ? '매수 고려' : data.pct < -2 ? '매도/손절 검토' : '관망';
+
+  sv();
+
+  if(id===cid){
+    var lp3=document.getElementById('liveP'), lc=document.getElementById('liveC'), lt=document.getElementById('lts');
+    var pc = s.trend==='up' ? 'cu' : s.trend==='down' ? 'cd' : 'cn';
+    var cc = s.trend==='up' ? 'lcu' : s.trend==='down' ? 'lcd' : 'lcn';
+
+    if(lp3){ lp3.textContent=s.price; lp3.className='livep ' + pc; }
+    if(lc){  lc.textContent=s.chg;    lc.className='livec ' + cc; }
+
+    if(lt){
+      var srcTxt = (s._src==='daum') ? '📡 Daum(Worker)'
+                : (s._src==='naver') ? '📡 네이버'
+                : '📡 Yahoo';
+      lt.textContent = srcTxt + ' ' + new Date().toLocaleTimeString('ko-KR');
+    }
+
+    updSugg(s);
+    calcPnl();
+  }
+
   renderList();
-  if(document.getElementById('pgHome').classList.contains('active'))renderHome();
+  if(document.getElementById('pgHome').classList.contains('active')) renderHome();
 }
 function updSugg(s){
   var el=document.getElementById('sigsugg');if(!el)return;
@@ -3234,7 +3352,50 @@ async function renderRel(s){
     });
   });
 }
-function addRel(r){if(typeof r==='string')r=JSON.parse(r);var ex=stocks.find(function(s){return s.code===r.code;});if(ex){alert(r.name+' 은 이미 추가되어 있습니다.');goToStock(ex.id);return;}var s={id:window.__ASSET_VER__,name:r.name,code:r.code,mkt:r.mkt||'',ticker:r.ticker,tv:r.tv,price:'',chg:'',trend:'neutral',sig:'watch',tgt:'',sl:'',cn:'',bt:'',st:'',ol:'',sy:'',risk:'2',bp:'',sh:'',memo:'',sec:'',upd:new Date().toISOString()};stocks.unshift(s);sv();cid=s.id;renderList();renderDetail();rfPrice(s.id);}
+function addRel(r){
+  if(typeof r==='string') r=JSON.parse(r);
+
+  var ex = stocks.find(function(s){ return s.code === r.code; });
+  if(ex){
+    alert(r.name+' 은 이미 추가되어 있습니다.');
+    goToStock(ex.id);
+    return;
+  }
+
+  var s = {
+    id: snGenId(),
+    name: r.name,
+    code: r.code,
+    mkt: r.mkt || '',
+    ticker: r.ticker,
+    tv: r.tv,
+    price: '',
+    chg: '',
+    trend: 'neutral',
+    sig: 'watch',
+    tgt: '',
+    sl: '',
+    cn: '',
+    bt: '',
+    st: '',
+    ol: '',
+    sy: '',
+    risk: '2',
+    bp: '',
+    sh: '',
+    memo: '',
+    sec: '',
+    upd: new Date().toISOString()
+  };
+
+  stocks.unshift(s);
+  sv();
+
+  cid = s.id;
+  renderList();
+  renderDetail();
+  rfPrice(s.id);
+}
 
 // ══════════════════════════════════════════
 // NOTE LIST & DETAIL
