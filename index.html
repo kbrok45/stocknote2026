@@ -63,7 +63,7 @@ function renderLinkPanel(containerEl, links, ctx){
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v175";
+window.APP_BUILD = "v176";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -375,7 +375,7 @@ function openExternalDashboard(url, key, items){
 <title>주식투자전략 노트</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;600&family=Bebas+Neue&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f1115;--sf:#151924;--sf2:#1b2030;--bd:#232a3a;--ac:#3fb9a6;--a2:#ff8a5c;--a3:#8b7cf6;--up:#e15b64;--dn:#2563eb;--ne:#e0c35a;--tx:#e6e8ee;--tx2:#8b93a8;--tx3:#5e667b;}
+:root{--bg:#0f1115;--sf:#151924;--sf2:#1b2030;--bd:#232a3a;--ac:#3fb9a6;--a2:#ff8a5c;--a3:#8b7cf6;--up:#d32f2f;--dn:#1976d2;--ne:#e0c35a;--tx:#e6e8ee;--tx2:#8b93a8;--tx3:#5e667b;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
 header{background:var(--sf);border-bottom:1px solid var(--bd);padding:0 18px;display:flex;align-items:center;justify-content:space-between;height:54px;position:sticky;top:0;z-index:300;overflow:visible;}
@@ -660,8 +660,8 @@ code{font-family:'JetBrains Mono',monospace;background:rgba(255,255,255,.07);pad
   --ac:#2563eb;
   --a2:#d97706;
   --a3:#4f46e5;
-  --up:#16a34a;
-  --dn:#dc2626;
+  --up:#d32f2f;
+  --dn:#1976d2;
   --ne:#ca8a04;
   --tx:#1f2937;
   --tx2:#6b7280;
@@ -686,8 +686,8 @@ body[data-theme="light"]{
   --ac:#0f766e;
   --a2: var(--a2);
   --a3: var(--a3);
-  --up: var(--up);
-  --dn: var(--dn);
+  --up:#d32f2f;
+  --dn:#1976d2;
   --tx: var(--text);
   --tx2: var(--muted);
   --tx3: #64748b;
@@ -700,8 +700,8 @@ body[data-theme="light"]{
   --shadow:0 10px 28px rgba(2,6,23,.10);
   --chip:rgba(37,99,235,.10);
   --chip2:rgba(2,132,199,.10);
-  --up:#0f766e;
-  --dn:#b91c1c;
+  --up:#d32f2f;
+  --dn:#1976d2;
   --a1:#1d4ed8;
   --a2:#0ea5e9;
   --a3:#4f46e5;
@@ -733,8 +733,8 @@ body[data-theme="dark"]{
   --ac:#3fb9a6;
   --a2:#ff8a5c;
   --a3:#8b7cf6;
-  --up:#35c46a;
-  --dn:#e15b64;
+  --up:#d32f2f;
+  --dn:#1976d2;
   --ne:#e0c35a;
   --tx:#e6e8ee;
   --tx2:#9ca3af;
@@ -2148,56 +2148,10 @@ document.getElementById('modal').addEventListener('click',function(e){if(e.targe
 // ══════════════════════════════════════════
 // PRICE
 // ══════════════════════════════════════════
-async async function fetchNaver(code){
+async function fetchNaver(code){
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return null;
   if(typeof window.netMarkCall==='function') window.netMarkCall();
-  code = String(code||'').trim();
-  try{
-    // Prefer direct JSON endpoints (no proxy) for best freshness
-    var u1 = 'https://api.stock.naver.com/stock/' + code + '/basic';
-    var u2 = 'https://m.stock.naver.com/api/stock/' + code + '/basic';
-    async function parsePayload(p){
-      if(!p) return null;
-      // both endpoints commonly expose these keys (names may vary slightly)
-      var cp = p.currentPrice ?? p.closePrice ?? p.nowPrice ?? null;
-      if(cp==null) return null;
-      var price = parseFloat(String(cp).replace(/,/g,''));
-      var amt = parseFloat(String(p.fluctuationsValue ?? p.compareToPreviousClosePrice ?? 0).replace(/,/g,'').replace(/[^0-9.-]/g,''));
-      var pct = parseFloat(String(p.fluctuationsRatio ?? p.compareToPreviousClosePriceRate ?? 0).replace(/[^0-9.-]/g,''));
-      if(!isFinite(price)) return null;
-      if(!isFinite(amt)) amt = 0;
-      if(!isFinite(pct)) pct = 0;
-      return {price:price, amt:amt, pct:pct, cur:'KRW', src:'naver'};
-    }
-    async function tryDirect(u){
-      try{
-        var r = await fetch(u, {signal: AbortSignal.timeout(4500), credentials:'omit', cache:'no-store'});
-        if(!r.ok) return null;
-        var p = await r.json();
-        return await parsePayload(p);
-      }catch(e){ return null; }
-    }
-    var out = await tryDirect(u1);
-    if(!out) out = await tryDirect(u2);
-    if(out) return out;
-
-    // Fallback: proxy (may be cached / slightly delayed)
-    async function tryProxy(u){
-      try{
-        var r = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(u), {signal: AbortSignal.timeout(7000), cache:'no-store'});
-        if(!r.ok) return null;
-        var d = await r.json();
-        var p = JSON.parse(d.contents);
-        return await parsePayload(p);
-      }catch(e){ return null; }
-    }
-    out = await tryProxy(u1);
-    if(!out) out = await tryProxy(u2);
-    return out;
-  }catch(e){
-    return null;
-  }
-}
+try{var u='https://m.stock.naver.com/api/stock/'+code+'/basic';var r=await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(u),{signal:AbortSignal.timeout(7000)});if(!r.ok)return null;var d=await r.json();var p=JSON.parse(d.contents);if(!p||!p.currentPrice)return null;var price=parseFloat(String(p.currentPrice).replace(/,/g,''));var amt=parseFloat(String(p.fluctuationsValue||0).replace(/,/g,'').replace(/[^0-9.-]/g,''));var pct=parseFloat(String(p.fluctuationsRatio||0).replace(/[^0-9.-]/g,''));return{price:price,amt:amt,pct:pct,cur:'KRW',src:'naver'};}catch(e){return null;}}
 async function fetchYahoo(ticker){
   if(typeof window.netCanCall==='function' && !window.netCanCall()) return null;
   if(typeof window.netMarkCall==='function') window.netMarkCall();
