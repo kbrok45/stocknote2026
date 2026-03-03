@@ -1913,10 +1913,10 @@ try{
     var first = String(ql||'').trim().charAt(0);
     if(first && /[a-z0-9]/i.test(first) && typeof window.loadUSChunkOnce==='function'){
       // don't stall UI: race with a short timeout
-      await Promise.race([
+      Promise.race([
         window.loadUSChunkOnce(first),
         new Promise(function(res){ setTimeout(function(){ res(null); }, 120); })
-      ]);
+      ]).catch(function(){});
     }
   }catch(e){}
   var usRes = searchUSDB(ql);
