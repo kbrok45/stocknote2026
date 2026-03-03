@@ -126,7 +126,7 @@ function renderLinkPanel(containerEl, links, ctx){
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v178";
+window.APP_BUILD = "v179";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -876,6 +876,13 @@ body.dark .extdash-blocked{background:rgba(255,255,255,.04)}
 .tvmini{margin-top:6px;border-radius:10px;overflow:hidden;border:1px solid rgba(127,127,127,.18)}
 body.dark .tvmini{border-color:rgba(200,200,200,.18)}
 .tvmini .tvmini-fallback{padding:10px;font-size:12px;opacity:.85}
+
+
+/* v179: Hide legacy price block for KR home cards */
+.home-card[data-kr="1"] .price,
+.home-card[data-kr="1"] .price-change {
+  display:none !important;
+}
 
 </style>
 
@@ -2370,6 +2377,7 @@ async function rfPrice(id,silent){
   var s=gbi(id);if(!s)return;
   if(!silent&&id===cid){var lp=document.getElementById('liveP');if(lp)lp.innerHTML='<span class="spin">↻</span>';}
   var isKR=/^\d{6}$/.test(s.code);
+  if(isKR){ return; }
   var data=isKR?await fetchNaver(s.code):null;
   // Do NOT fallback to Yahoo for KR tickers (often stale/mis-mapped).
   if(!isKR && !data && s.ticker) data = await fetchYahoo(s.ticker);
@@ -2402,6 +2410,7 @@ function genAnalysis(s){
   if(!s._at)return'';
   var pct=parseFloat((s.chg||'0').replace(/[^0-9.-]/g,''))||0;
   var isKR=/^\d{6}$/.test(s.code);
+  if(isKR){ return; }
   var cur=s._cur||'KRW';
   var price=parseFloat((s.price||'0').replace(/[^0-9.]/g,''))||0;
   var bp=parseFloat((s.bp||'0').replace(/[^0-9.]/g,''))||0;
@@ -3706,6 +3715,13 @@ body[data-theme="light"] .tvph{background:linear-gradient(180deg,rgba(255,255,25
 body[data-theme="light"] .cnote textarea{background:#ffffff;}
 body[data-theme="light"] .itab{color:var(--muted);}
 body[data-theme="light"] .itab.active{color:#fff;}
+
+
+/* v179: Hide legacy price block for KR home cards */
+.home-card[data-kr="1"] .price,
+.home-card[data-kr="1"] .price-change {
+  display:none !important;
+}
 
 </style>
 
