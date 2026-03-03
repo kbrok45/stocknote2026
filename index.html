@@ -1835,7 +1835,7 @@ function isChosungQuery(q){
   return q.length>0 && /^[ㄱ-ㅎ]+$/.test(q);
 }
 
-function runSearch(q,lid){
+async function runSearch(q,lid){
   var ac=document.getElementById(lid);if(!ac)return;
   var qRaw=(q||'');
   var ql=qRaw.toLowerCase().trim();
