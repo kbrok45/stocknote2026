@@ -7,21 +7,16 @@
 <meta http-equiv="Expires" content="0" />
 <script>
 
-// --- v178: TradingView mini widget (display-only; avoids KR price staleness) ---
+// --- v180: TradingView mini widget (KR display-only) ---
 function tvKrSymbol(code){
   code = String(code||'').trim();
-  // TradingView generally accepts KRX:005930 for Korean equities (KOSPI/KOSDAQ)
   return 'KRX:' + code;
 }
 function mountTvMini(el, symbol, isLight){
   try{
     if(!el || !symbol) return;
-    // Avoid remount
-    if(el.getAttribute('data-mounted')==='1') return;
+    el.innerHTML = '';
     el.setAttribute('data-mounted','1');
-    // Basic fallback text (in case widget blocked)
-    el.innerHTML = '<div class="tvmini-fallback">차트 로딩 중…</div>';
-    // TradingView embed script (mini symbol overview)
     var s = document.createElement('script');
     s.type = 'text/javascript';
     s.async = true;
@@ -29,7 +24,7 @@ function mountTvMini(el, symbol, isLight){
     var cfg = {
       symbol: symbol,
       width: "100%",
-      height: "90",
+      height: "96",
       locale: "kr",
       dateRange: "1D",
       colorTheme: isLight ? "light" : "dark",
@@ -40,19 +35,15 @@ function mountTvMini(el, symbol, isLight){
       noTimeScale: false
     };
     s.text = JSON.stringify(cfg);
-    // Clear and mount
-    el.innerHTML = '';
     el.appendChild(s);
 
-    // If it doesn't load within 3s, show fallback link
     setTimeout(function(){
       try{
-        // If still empty (some blockers), show fallback
         if(!el.querySelector('iframe') && !el.querySelector('div[class*="tradingview"]')){
           el.innerHTML = '<div class="tvmini-fallback">위젯 표시가 제한될 수 있다. <a href="https://kr.tradingview.com/symbols/'+encodeURIComponent(symbol.replace(':','-'))+'/" target="_blank" rel="noopener noreferrer">새 탭에서 보기</a></div>';
         }
       }catch(e){}
-    }, 3200);
+    }, 3500);
   }catch(e){
     try{ el.innerHTML = '<div class="tvmini-fallback">위젯 로딩 실패</div>'; }catch(_){}
   }
@@ -60,7 +51,7 @@ function mountTvMini(el, symbol, isLight){
 function mountHomeTvMinis(){
   try{
     var isLight = !document.body.classList.contains('dark');
-    var nodes = document.querySelectorAll('[data-tvmini="1"]');
+    var nodes = document.querySelectorAll('.home-card[data-kr="1"] .tvmini');
     nodes.forEach(function(n){
       var code = n.getAttribute('data-code') || '';
       if(!/^\d{6}$/.test(code)) return;
@@ -126,7 +117,7 @@ function renderLinkPanel(containerEl, links, ctx){
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v179";
+window.APP_BUILD = "v180";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -872,17 +863,15 @@ body.dark .extdash-tabs{background:rgba(255,255,255,.04)}
 body.dark .extdash-blocked{background:rgba(255,255,255,.04)}
 
 
-/* --- v178 TradingView mini widget for KR home cards --- */
-.tvmini{margin-top:6px;border-radius:10px;overflow:hidden;border:1px solid rgba(127,127,127,.18)}
-body.dark .tvmini{border-color:rgba(200,200,200,.18)}
-.tvmini .tvmini-fallback{padding:10px;font-size:12px;opacity:.85}
-
-
-/* v179: Hide legacy price block for KR home cards */
+/* --- v180: KR home cards use TradingView mini widget only (no numeric fetch) --- */
 .home-card[data-kr="1"] .price,
-.home-card[data-kr="1"] .price-change {
+.home-card[data-kr="1"] .price-change,
+.home-card[data-kr="1"] .spark {
   display:none !important;
 }
+.tvmini{margin-top:8px;border-radius:12px;overflow:hidden;border:1px solid rgba(127,127,127,.18)}
+.tvmini .tvmini-fallback{padding:10px;font-size:12px;opacity:.85}
+body.dark .tvmini{border-color:rgba(200,200,200,.18)}
 
 </style>
 
@@ -1805,8 +1794,8 @@ setInterval(tick,1000); tick();
 // ══════════════════════════════════════════
 function renderHome() {
   renderPortSummary(); renderQuickGrid(); renderSigRows(); renderRecentList();
-  // v178: mount TV minis after DOM paint
-  setTimeout(mountHomeTvMinis, 0);
+  // v180: mount KR widgets after render
+  try{ setTimeout(mountHomeTvMinis,0); }catch(e){}
 }
 
 function renderPortSummary() {
@@ -2377,8 +2366,9 @@ async function rfPrice(id,silent){
   var s=gbi(id);if(!s)return;
   if(!silent&&id===cid){var lp=document.getElementById('liveP');if(lp)lp.innerHTML='<span class="spin">↻</span>';}
   var isKR=/^\d{6}$/.test(s.code);
+  // v180: no numeric fetch for KR on Home (use TradingView widget). Avoid CORS spam.
   if(isKR){ return; }
-  var data=isKR?await fetchNaver(s.code):null;
+  var data=null;
   // Do NOT fallback to Yahoo for KR tickers (often stale/mis-mapped).
   if(!isKR && !data && s.ticker) data = await fetchYahoo(s.ticker);
   if(!data){if(!silent&&id===cid){var lp2=document.getElementById('liveP');if(lp2&&lp2.querySelector('.spin'))lp2.textContent=s.price||'오류';}return;}
@@ -2410,7 +2400,6 @@ function genAnalysis(s){
   if(!s._at)return'';
   var pct=parseFloat((s.chg||'0').replace(/[^0-9.-]/g,''))||0;
   var isKR=/^\d{6}$/.test(s.code);
-  if(isKR){ return; }
   var cur=s._cur||'KRW';
   var price=parseFloat((s.price||'0').replace(/[^0-9.]/g,''))||0;
   var bp=parseFloat((s.bp||'0').replace(/[^0-9.]/g,''))||0;
@@ -3715,13 +3704,6 @@ body[data-theme="light"] .tvph{background:linear-gradient(180deg,rgba(255,255,25
 body[data-theme="light"] .cnote textarea{background:#ffffff;}
 body[data-theme="light"] .itab{color:var(--muted);}
 body[data-theme="light"] .itab.active{color:#fff;}
-
-
-/* v179: Hide legacy price block for KR home cards */
-.home-card[data-kr="1"] .price,
-.home-card[data-kr="1"] .price-change {
-  display:none !important;
-}
 
 </style>
 
