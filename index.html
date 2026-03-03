@@ -7,6 +7,69 @@
 <meta http-equiv="Expires" content="0" />
 <script>
 
+// --- v178: TradingView mini widget (display-only; avoids KR price staleness) ---
+function tvKrSymbol(code){
+  code = String(code||'').trim();
+  // TradingView generally accepts KRX:005930 for Korean equities (KOSPI/KOSDAQ)
+  return 'KRX:' + code;
+}
+function mountTvMini(el, symbol, isLight){
+  try{
+    if(!el || !symbol) return;
+    // Avoid remount
+    if(el.getAttribute('data-mounted')==='1') return;
+    el.setAttribute('data-mounted','1');
+    // Basic fallback text (in case widget blocked)
+    el.innerHTML = '<div class="tvmini-fallback">차트 로딩 중…</div>';
+    // TradingView embed script (mini symbol overview)
+    var s = document.createElement('script');
+    s.type = 'text/javascript';
+    s.async = true;
+    s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js';
+    var cfg = {
+      symbol: symbol,
+      width: "100%",
+      height: "90",
+      locale: "kr",
+      dateRange: "1D",
+      colorTheme: isLight ? "light" : "dark",
+      isTransparent: true,
+      autosize: false,
+      largeChartUrl: "",
+      chartOnly: false,
+      noTimeScale: false
+    };
+    s.text = JSON.stringify(cfg);
+    // Clear and mount
+    el.innerHTML = '';
+    el.appendChild(s);
+
+    // If it doesn't load within 3s, show fallback link
+    setTimeout(function(){
+      try{
+        // If still empty (some blockers), show fallback
+        if(!el.querySelector('iframe') && !el.querySelector('div[class*="tradingview"]')){
+          el.innerHTML = '<div class="tvmini-fallback">위젯 표시가 제한될 수 있다. <a href="https://kr.tradingview.com/symbols/'+encodeURIComponent(symbol.replace(':','-'))+'/" target="_blank" rel="noopener noreferrer">새 탭에서 보기</a></div>';
+        }
+      }catch(e){}
+    }, 3200);
+  }catch(e){
+    try{ el.innerHTML = '<div class="tvmini-fallback">위젯 로딩 실패</div>'; }catch(_){}
+  }
+}
+function mountHomeTvMinis(){
+  try{
+    var isLight = !document.body.classList.contains('dark');
+    var nodes = document.querySelectorAll('[data-tvmini="1"]');
+    nodes.forEach(function(n){
+      var code = n.getAttribute('data-code') || '';
+      if(!/^\d{6}$/.test(code)) return;
+      mountTvMini(n, tvKrSymbol(code), isLight);
+    });
+  }catch(e){}
+}
+
+
 // --- External chart deep links (KR) ---
 function buildKrLinks(code, name, extra){
   code = String(code||'').trim();
@@ -63,7 +126,7 @@ function renderLinkPanel(containerEl, links, ctx){
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v177";
+window.APP_BUILD = "v178";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -807,6 +870,12 @@ body.dark .extdash{border-color:rgba(200,200,200,.20)}
 body.dark .extdash-head{background:rgba(255,255,255,.06)}
 body.dark .extdash-tabs{background:rgba(255,255,255,.04)}
 body.dark .extdash-blocked{background:rgba(255,255,255,.04)}
+
+
+/* --- v178 TradingView mini widget for KR home cards --- */
+.tvmini{margin-top:6px;border-radius:10px;overflow:hidden;border:1px solid rgba(127,127,127,.18)}
+body.dark .tvmini{border-color:rgba(200,200,200,.18)}
+.tvmini .tvmini-fallback{padding:10px;font-size:12px;opacity:.85}
 
 </style>
 
@@ -1729,7 +1798,10 @@ setInterval(tick,1000); tick();
 // ══════════════════════════════════════════
 function renderHome() {
   renderPortSummary(); renderQuickGrid(); renderSigRows(); renderRecentList();
+  // v178: mount TV minis after DOM paint
+  setTimeout(mountHomeTvMinis, 0);
 }
+
 function renderPortSummary() {
   document.getElementById('ps-total').textContent=stocks.length;
   document.getElementById('ps-buy').textContent=stocks.filter(function(s){return s.sig==='buy'||s.sig==='hold';}).length;
