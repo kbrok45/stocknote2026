@@ -10,7 +10,7 @@
    - Use versioned URL (?v=APP_BUILD) to reduce "updated but not changed" due to caching.
    - Also version all local JSON fetches with the same build tag.
 */
-window.APP_BUILD = "v166";
+window.APP_BUILD = "v2p1";
 window.__ASSET_VER__ = window.APP_BUILD;
 (function(){
   try{
@@ -1016,13 +1016,127 @@ function snFixDuplicateIds(list){
   }
 }
 
+// ══════════════════════════════════════════
+// SCHEMA v2 (Phase 1): migration + alerts
+// ══════════════════════════════════════════
+var SN_SCHEMA_VERSION = 2;
+
+function snGetSchema(){
+  try { return parseInt(localStorage.getItem('snv5_schema')||'0',10)||0; } catch(e){ return 0; }
+}
+function snSetSchema(v){
+  try { localStorage.setItem('snv5_schema', String(v||0)); } catch(e){}
+}
+
+function snParseNum(x){
+  if(x==null) return NaN;
+  var s = String(x).replace(/,/g,'').trim();
+  if(!s) return NaN;
+  var n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+
+function snMigrateToV2(list){
+  var changed = false;
+  (list||[]).forEach(function(s){
+    if(!s) return;
+    // ensure stable id (string)
+    if(typeof s.id !== 'string') { s.id = String(s.id||''); changed = true; }
+    // phase1: strategy template fields under plan
+    if(!s.plan || typeof s.plan !== 'object'){
+      s.plan = { thesis:'', catalysts:'', invalidation:'', horizon:'', conviction:'', riskNote:'' };
+      changed = true;
+    } else {
+      if(typeof s.plan.thesis!=='string'){ s.plan.thesis=''; changed=true; }
+      if(typeof s.plan.catalysts!=='string'){ s.plan.catalysts=''; changed=true; }
+      if(typeof s.plan.invalidation!=='string'){ s.plan.invalidation=''; changed=true; }
+      if(typeof s.plan.horizon!=='string'){ s.plan.horizon=''; changed=true; }
+      if(typeof s.plan.conviction!=='string'){ s.plan.conviction=''; changed=true; }
+      if(typeof s.plan.riskNote!=='string'){ s.plan.riskNote=''; changed=true; }
+    }
+    // quote meta container
+    if(!s.quote || typeof s.quote !== 'object'){ s.quote = {src:'', ts:'', ok:false, cached:false, tradeTime:'', confidence:0}; changed=true; }
+  });
+  if(changed) {
+    try { localStorage.setItem('snv5', JSON.stringify(list||[])); } catch(e){}
+  }
+  snSetSchema(SN_SCHEMA_VERSION);
+  return changed;
+}
+
+// alerts (target/stop) cooldown state
+function snLoadAlertState(){
+  try { return JSON.parse(localStorage.getItem('snv5_alertState')||'{}')||{}; } catch(e){ return {}; }
+}
+function snSaveAlertState(st){
+  try { localStorage.setItem('snv5_alertState', JSON.stringify(st||{})); } catch(e){}
+}
+var snAlertState = snLoadAlertState();
+
+function snMaybeNotify(title, body){
+  try{
+    if(!('Notification' in window)) return;
+    if(Notification.permission === 'granted'){
+      new Notification(title, { body: body || '' });
+    }
+  }catch(e){}
+}
+function snRequestNotifyPerm(){
+  try{
+    if(!('Notification' in window)) { alert('이 브라우저는 알림을 지원하지 않습니다.'); return; }
+    if(Notification.permission === 'granted') { alert('알림 권한이 이미 허용되어 있습니다.'); return; }
+    Notification.requestPermission().then(function(p){
+      if(p==='granted') alert('알림 권한이 허용되었습니다.');
+      else alert('알림 권한이 허용되지 않았습니다.');
+    });
+  }catch(e){}
+}
+
+function snCheckAlerts(s){
+  if(!s || !s.code) return;
+  var code = String(s.code);
+  var price = snParseNum(s.price);
+  if(!isFinite(price)) return;
+
+  var tgt = snParseNum(s.tgt);
+  var sl  = snParseNum(s.sl);
+  var now = Date.now();
+  var cooldown = 30 * 60 * 1000; // 30min
+  var st = snAlertState[code] || (snAlertState[code] = {});
+
+  // Target reached
+  if(isFinite(tgt) && price >= tgt){
+    if(!st.tgtTs || (now - st.tgtTs) > cooldown){
+      st.tgtTs = now;
+      snSaveAlertState(snAlertState);
+      try{ s.logs = s.logs || []; s.logs.unshift({ts:new Date().toISOString(), type:'ALERT', text:'목표가 도달: '+price+' (목표 '+tgt+')', priceSnap: price}); }catch(e){}
+      snMaybeNotify('🎯 목표가 도달 - ' + (s.name||code), '현재가 ' + price + ' / 목표 ' + tgt);
+    }
+  }
+
+  // Stop-loss hit
+  if(isFinite(sl) && price <= sl){
+    if(!st.slTs || (now - st.slTs) > cooldown){
+      st.slTs = now;
+      snSaveAlertState(snAlertState);
+      try{ s.logs = s.logs || []; s.logs.unshift({ts:new Date().toISOString(), type:'ALERT', text:'손절가 도달: '+price+' (손절 '+sl+')', priceSnap: price}); }catch(e){}
+      snMaybeNotify('⛔ 손절가 도달 - ' + (s.name||code), '현재가 ' + price + ' / 손절 ' + sl);
+    }
+  }
+}
+
 
 <script>
 // ══════════════════════════════════════════
 // DATA & STATE
 // ══════════════════════════════════════════
 var stocks = JSON.parse(localStorage.getItem('snv5') || '[]');
-snFixDuplicateIds(stocks);
+// v2 migration (phase1)
+try{
+  if(snGetSchema() < SN_SCHEMA_VERSION) snMigrateToV2(stocks);
+}catch(e){}
+// ensure unique ids
+try{ snFixDuplicateIds(stocks); }catch(e){}
 
 
 // ─────────────────────────────────────────────
@@ -2123,12 +2237,30 @@ async function rfPrice(id,silent){
   s.trend=data.pct>0.3?'up':data.pct<-0.3?'down':'neutral';s._src=data.src;s._ts=new Date().toISOString();
   s._at=data.pct>1?'강한상승':data.pct>0.3?'상승':data.pct<-1?'강한하락':data.pct<-0.3?'하락':'횡보';
   s._as=data.pct>2?'매수 고려':data.pct<-2?'매도/손절 검토':'관망';
+  // v2: quote meta + alerts
+  try{
+    s.quote = s.quote || {};
+    s.quote.src = data.src || s._src || '';
+    s.quote.ts  = new Date().toISOString();
+    s.quote.ok  = true;
+    s.quote.cached = !!data.cached;
+    s.quote.tradeTime = data.tradeTime || '';
+    var conf = 0.6;
+    if((s.quote.src==='daum' || s.quote.src==='naver') && (data.tradeTime||data.tradeDate)) conf = 0.9;
+    s.quote.confidence = conf;
+  }catch(e){}
+  try{ snCheckAlerts(s); }catch(e){}
   sv();
   if(id===cid){
     var lp3=document.getElementById('liveP'),lc=document.getElementById('liveC'),lt=document.getElementById('lts');
     var pc=s.trend==='up'?'cu':s.trend==='down'?'cd':'cn';var cc=s.trend==='up'?'lcu':s.trend==='down'?'lcd':'lcn';
     if(lp3){lp3.textContent=s.price;lp3.className='livep '+pc;}if(lc){lc.textContent=s.chg;lc.className='livec '+cc;}
-    if(lt)lt.textContent=(s._src==='naver'?'📡 네이버':'📡 Yahoo')+' '+new Date().toLocaleTimeString('ko-KR');
+    if(lt){
+      var srcLabel = (s.quote&&s.quote.src==='daum')?'📡 다음':(s.quote&&s.quote.src==='naver')?'📡 네이버':(s._src==='naver')?'📡 네이버':'📡 데이터';
+      var c = (s.quote&&s.quote.cached)?' · cache':'';
+      var conf = (s.quote&&typeof s.quote.confidence==='number') ? (' · 신뢰 '+Math.round(s.quote.confidence*100)+'%') : '';
+      lt.textContent = srcLabel + c + conf + ' · ' + new Date().toLocaleTimeString('ko-KR');
+    }
     updSugg(s);calcPnl();
   }
   renderList();
@@ -3301,7 +3433,17 @@ function renderDetail(){
 '<div class="csec"><div class="ctb"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="slbl">📈 실시간 차트</span><span style="font-size:11px;color:var(--a3)">'+(s.tv||'')+'</span></div><div class="itabs"><button class="itab'+(tviv==='D'?' active':'')+'" onclick="setIv(\'D\',this)">일</button><button class="itab'+(tviv==='W'?' active':'')+'" onclick="setIv(\'W\',this)">주</button><button class="itab'+(tviv==='M'?' active':'')+'" onclick="setIv(\'M\',this)">월</button><button class="itab'+(tviv==='3M'?' active':'')+'" onclick="setIv(\'3M\',this)">3M</button><button class="itab'+(tviv==='12M'?' active':'')+'" onclick="setIv(\'12M\',this)">1Y</button></div></div><div class="tvcon" id="tvc"><div class="tvph"><div style="font-size:22px">📊</div><p style="font-size:12px">차트 로딩 중...</p></div></div><div class="cnote"><textarea id="dCn" oninput="uf(\'cn\')" placeholder="차트 패턴, 지지/저항, 기술적 지표...">'+(s.cn||'')+'</textarea></div></div>'+
 '<div class="twocol"><div class="blk blkbuy"><div class="blkt btbuy">▲ 매수 타이밍</div><textarea id="dBt" oninput="uf(\'bt\')" placeholder="진입 조건, 분할매수...">'+(s.bt||'')+'</textarea></div><div class="blk blksell"><div class="blkt btsell">▼ 매도 타이밍</div><textarea id="dSt" oninput="uf(\'st\')" placeholder="목표가, 청산 조건...">'+(s.st||'')+'</textarea></div></div>'+
 '<div class="twocol"><div class="blk"><div class="blkt btn2">🔭 투자전망</div><textarea id="dOl" oninput="uf(\'ol\')" placeholder="업황, 실적, 매크로...">'+(s.ol||'')+'</textarea></div><div class="blk"><div class="blkt btn2">⚡ 투자전략</div><textarea id="dSy" oninput="uf(\'sy\')" placeholder="전략, 포지션, 비중...">'+(s.sy||'')+'</textarea></div></div>'+
-'<div class="botsec"><div class="rblk"><div class="slbl">⚠️ 리스크</div><div class="rlevs">'+risks+'</div></div><div class="memoblk"><div class="slbl">📝 메모</div><textarea id="dMemo" oninput="uf(\'memo\')" placeholder="뉴스, 공시, 리서치...">'+(s.memo||'')+'</textarea></div></div>'+
+'<div class="botsec"><div class="rblk"><div class="slbl">⚠️ 리스크</div><div class="rlevs">'+risks+'</div></div><div class="memoblk"><div class="slbl">📝 메모</div><textarea id="dMemo" oninput="uf(\'memo\')" placeholder="뉴스, 공시, 리서치...">'+(s.memo||'')+'</textarea></div></div>'+'+
+'<div class="botsec" style="margin-top:10px"><div class="rblk" style="grid-column:1 / -1"><div class="slbl">🧭 전략 템플릿 (v2)</div>'+
+'<div class="igrid" style="grid-template-columns:1fr 1fr"><div class="ib"><label>투자 가설(Thesis)</label><textarea id="dThesis" oninput="uf2(\'thesis\')" placeholder="왜 이 종목인가? 핵심 논리...">'+(s.plan&&s.plan.thesis?s.plan.thesis:'')+'</textarea></div>'+
+'<div class="ib"><label>촉매(Catalysts)</label><textarea id="dCat" oninput="uf2(\'catalysts\')" placeholder="실적/수주/정책/제품 등 촉매...">'+(s.plan&&s.plan.catalysts?s.plan.catalysts:'')+'</textarea></div>'+
+'<div class="ib"><label>무효화 조건(Invalidation)</label><textarea id="dInv" oninput="uf2(\'invalidation\')" placeholder="이 조건이면 전략 폐기...">'+(s.plan&&s.plan.invalidation?s.plan.invalidation:'')+'</textarea></div>'+
+'<div class="ib"><label>투자 기간(Horizon)</label><input id="dHor" value="'+(s.plan&&s.plan.horizon?s.plan.horizon:'')+'" oninput="uf2(\'horizon\')" placeholder="예: 1~3개월 / 6~12개월"></div>'+
+'<div class="ib"><label>확신도(Conviction)</label><input id="dConv" value="'+(s.plan&&s.plan.conviction?s.plan.conviction:'')+'" oninput="uf2(\'conviction\')" placeholder="예: High/Med/Low 또는 1~5"></div>'+
+'<div class="ib"><label>리스크 메모</label><textarea id="dRiskNote" oninput="uf2(\'riskNote\')" placeholder="핵심 리스크/관찰 포인트...">'+(s.plan&&s.plan.riskNote?s.plan.riskNote:'')+'</textarea></div></div>'+
+'<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn" onclick="snRequestNotifyPerm()">🔔 알림 권한</button><span style="font-size:12px;color:#666">목표가/손절가 도달 시 브라우저 알림</span></div>'+
+'</div></div>'+
+
 '<div class="relsec" id="relsec" style="display:none"><div class="slbl" style="margin-bottom:7px">🔗 관련 종목 <span style="font-size:10px;color:var(--tx3);text-transform:none;letter-spacing:0">(클릭으로 내 목록 추가)</span></div><div class="relgrid" id="relgrid"></div></div>';
   dv.scrollTop=0;
   if(s.tv)setTimeout(function(){loadTV(s.tv,tviv);},150);
@@ -3311,6 +3453,17 @@ function renderDetail(){
 function calcPnl(){var s=gbi(cid);if(!s)return;var er=document.getElementById('pnlR'),ee=document.getElementById('pnlE');if(!er)return;var pn=parseFloat((s.price||'').replace(/[^0-9.]/g,'')),bn=parseFloat((s.bp||'').replace(/[^0-9.]/g,'')),sn=parseFloat(s.sh||0);if(!isNaN(pn)&&!isNaN(bn)&&sn>0&&bn>0){var diff=(pn-bn)*sn,pct=((pn-bn)/bn*100).toFixed(2);er.textContent=(diff>=0?'+':'')+Math.round(diff).toLocaleString()+' ('+(diff>=0?'+':'')+pct+'%)';er.style.color=diff>=0?'var(--up)':'var(--dn)';if(ee)ee.textContent='평가금액 '+Math.round(pn*sn).toLocaleString();}else{er.textContent='---';er.style.color='var(--tx3)';if(ee)ee.textContent='';}}
 var fmap={name:'dName',trend:'dTrend',sig:'dSig',tgt:'dTgt',sl:'dSl',sec:'dSec',risk:'dRisk',kw:'dKw',bp:'dBp',sh:'dSh',cn:'dCn',bt:'dBt',st:'dSt',ol:'dOl',sy:'dSy',memo:'dMemo'};
 function uf(f){var s=gbi(cid);if(!s)return;var el=document.getElementById(fmap[f]);if(!el)return;s[f]=el.tagName==='SELECT'?el.options[el.selectedIndex].value:el.value;s.upd=new Date().toISOString();clearTimeout(svt);showSind('저장 중...','');svt=setTimeout(function(){sv();renderList();showSind('✓ 저장됨','saved');if(document.getElementById('pgHome').classList.contains('active'))renderHome();},700);}
+
+function uf2(k){
+  var s = gbi(cid); if(!s) return;
+  if(!s.plan || typeof s.plan!=='object') s.plan = {thesis:'',catalysts:'',invalidation:'',horizon:'',conviction:'',riskNote:''};
+  var idMap = {thesis:'dThesis', catalysts:'dCat', invalidation:'dInv', horizon:'dHor', conviction:'dConv', riskNote:'dRiskNote'};
+  var el = document.getElementById(idMap[k]);
+  if(!el) return;
+  s.plan[k] = el.value;
+  s.upd = new Date().toISOString();
+  try{ sv(); }catch(e){}
+}
 function setRisk(v,el){var s=gbi(cid);if(!s)return;s.risk=v;s.upd=new Date().toISOString();document.querySelectorAll('.rlev').forEach(function(e){e.classList.remove('sel');});el.classList.add('sel');sv();renderList();showSind('✓ 저장됨','saved');}
 function showSind(txt,cls){var ind=document.getElementById('sind');ind.textContent=txt;ind.className='sind show '+(cls||'');if(cls==='saved'||cls==='drive')setTimeout(function(){ind.className='sind';},2000);}
 function delS(){if(!confirm('삭제할까요?'))return;stocks=stocks.filter(function(s){return s.id!==cid;});sv();cid=null;document.getElementById('dv').className='dv';document.getElementById('empty').style.display='';clearInterval(prt);renderList();}
