@@ -1634,7 +1634,7 @@ function renderSigRows() {
   stocks.forEach(function(s){if(groups[s.sig])groups[s.sig].push(s);});
   function makeRow(list,title,color){
     return '<div class="sigrow"><div class="sigrow-t" style="color:'+color+'">'+title+' ('+list.length+')</div>'+
-      (list.length?list.map(function(s){var pc=s.trend==='up'?'cu':s.trend==='down'?'cd':'cn';return'<div class="sitem" onclick="goToStock(\''+s.id+'\')"><span class="sin">'+s.name+'</span><span class="sip '+pc+'">'+(s.price||'---')+'</span></div>';}).join(''):'<div style="color:var(--tx3);font-size:11px;padding:5px 0">없음</div>')+'</div>';
+      (list.length?list.map(function(s){var pc=s.trend==='up'?'cu':s.trend==='down'?'cd':'cn';return'<div class="sitem" data-goto="'+s.id+'"><span class="sin">'+s.name+'</span><span class="sip '+pc+'">'+(s.price||'---')+'</span></div>';}).join(''):'<div style="color:var(--tx3);font-size:11px;padding:5px 0">없음</div>')+'</div>';
   }
   el.innerHTML=makeRow(groups.buy,'▲ 매수 종목','var(--up)')+makeRow(groups.watch,'👁 관심 종목','var(--a3)');
 }
@@ -1646,7 +1646,7 @@ function renderRecentList() {
     var dc=s.trend==='up'?'var(--up)':s.trend==='down'?'var(--dn)':'var(--ne)';
     var ti=s.trend==='up'?'▲':s.trend==='down'?'▼':'━';
     var rt=s.upd?relT(new Date(s.upd)):'';
-    return '<div class="rcitem" onclick="goToStock(\''+s.id+'\')"><div class="rcl"><div class="rcd" style="background:'+dc+'"></div><div><div class="rcn">'+s.name+'</div><div class="rct">'+rt+'</div></div></div><div><div class="rcrp '+pc+'">'+(s.price||'---')+'</div><div class="rcrc '+pc+'">'+ti+' '+(s.chg||'')+'</div></div></div>';
+    return '<div class="rcitem" data-goto="'+s.id+'"><div class="rcl"><div class="rcd" style="background:'+dc+'"></div><div><div class="rcn">'+s.name+'</div><div class="rct">'+rt+'</div></div></div><div><div class="rcrp '+pc+'">'+(s.price||'---')+'</div><div class="rcrc '+pc+'">'+ti+' '+(s.chg||'')+'</div></div></div>';
   }).join('');
 }
 function relT(d){var n=new Date(),diff=Math.floor((n-d)/1000);if(diff<60)return'방금';if(diff<3600)return Math.floor(diff/60)+'분 전';if(diff<86400)return Math.floor(diff/3600)+'시간 전';return Math.floor(diff/86400)+'일 전';}
@@ -4474,6 +4474,23 @@ async function snUpdateHomePricesKR(){
     // 콘솔 에러 최소화: 조용히 실패
   }
 }
+
+// ─────────────────────────────────────────────
+// Delegated navigation: click any element with data-goto="ID"
+// (avoids inline onclick string-escape issues)
+// ─────────────────────────────────────────────
+document.addEventListener('click', function(ev){
+  try{
+    var el = ev.target && ev.target.closest ? ev.target.closest('[data-goto]') : null;
+    if(!el) return;
+    var id = el.getAttribute('data-goto');
+    if(!id) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(typeof goToStock === 'function') goToStock(id);
+  }catch(e){}
+}, true);
+
 </script>
 
 </body>
