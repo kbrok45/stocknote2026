@@ -653,6 +653,26 @@ body[data-theme="light"] .tvbtn.active{background:rgba(37,99,235,.12); border-co
 body[data-theme="light"] .tvsel{background:rgba(15,23,42,.04); color:var(--text); border:1px solid rgba(15,23,42,.10);}
 body[data-theme="light"] .tvmono{color:var(--text);}
 
+
+
+/* ===== KR color convention override (Up=Red, Down=Blue) ===== */
+:root{
+  --up:#d32f2f !important;   /* 상승: red */
+  --dn:#1976d2 !important;   /* 하락: blue */
+  --ne:#666666 !important;   /* 보합: gray */
+}
+/* text color classes */
+.cu,.lcu,.up,.pos{color:#d32f2f !important;}
+.cd,.lcd,.down,.neg{color:#1976d2 !important;}
+.cn,.lcn,.neutral{color:#666666 !important;}
+/* common arrow/badge helpers (if any) */
+.badge-up,.tag-up,.pill-up,.chip-up{background:rgba(211,47,47,.12) !important; color:#d32f2f !important; border-color:rgba(211,47,47,.35) !important;}
+.badge-down,.tag-down,.pill-down,.chip-down{background:rgba(25,118,210,.12) !important; color:#1976d2 !important; border-color:rgba(25,118,210,.35) !important;}
+/* card accent borders (if using data-trend) */
+[data-trend="up"]{--trendColor:#d32f2f !important;}
+[data-trend="down"]{--trendColor:#1976d2 !important;}
+[data-trend="neutral"]{--trendColor:#666666 !important;}
+
 </style>
 
 <script>
